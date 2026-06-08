@@ -76,7 +76,10 @@ pub fn write_cache_from_stdin_at(stdin_json: &str, path: &Path, now: SystemTime)
         let o = rl.get(name)?;
         let used = o.get("used_percentage")?.as_f64()?;
         let resets_at = o.get("resets_at").and_then(|r| r.as_i64());
-        Some(CacheWindow { used_percentage: used, resets_at })
+        Some(CacheWindow {
+            used_percentage: used,
+            resets_at,
+        })
     };
     let (Some(five_hour), Some(seven_day)) = (win("five_hour"), win("seven_day")) else {
         return Ok(());
@@ -86,7 +89,11 @@ pub fn write_cache_from_stdin_at(stdin_json: &str, path: &Path, now: SystemTime)
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    let cache = Cache { observed_unix_ms, five_hour, seven_day };
+    let cache = Cache {
+        observed_unix_ms,
+        five_hour,
+        seven_day,
+    };
     let json = serde_json::to_string(&cache)?;
 
     if let Some(dir) = path.parent() {

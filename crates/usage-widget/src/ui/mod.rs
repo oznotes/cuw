@@ -16,7 +16,9 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::Result;
 use gpui::*;
 use gpui_component::menu::ContextMenuExt;
-use gpui_component::{ActiveTheme as _, Root, Theme, ThemeMode, h_flex, progress::Progress, v_flex};
+use gpui_component::{
+    ActiveTheme as _, Root, Theme, ThemeMode, h_flex, progress::Progress, v_flex,
+};
 
 use usage_core::collector::Collector;
 use usage_core::config::Config;
@@ -129,20 +131,28 @@ impl Widget {
         })
         .detach();
 
-        Widget { shared, config, last_saved_pos: None }
+        Widget {
+            shared,
+            config,
+            last_saved_pos: None,
+        }
     }
 
     fn level(&self, used_pct: f32) -> Level {
-        Level::from_pct(used_pct, self.config.warn_threshold, self.config.critical_threshold)
+        Level::from_pct(
+            used_pct,
+            self.config.warn_threshold,
+            self.config.critical_threshold,
+        )
     }
 
     /// Persist the window position when it changes (after a drag settles).
     fn save_position_if_moved(&mut self, window: &Window) {
         let o = window.bounds().origin;
         let pos = (f32::from(o.x), f32::from(o.y));
-        let moved = self
-            .last_saved_pos
-            .map_or(true, |p| (p.0 - pos.0).abs() > 1.0 || (p.1 - pos.1).abs() > 1.0);
+        let moved = self.last_saved_pos.map_or(true, |p| {
+            (p.0 - pos.0).abs() > 1.0 || (p.1 - pos.1).abs() > 1.0
+        });
         if moved {
             self.last_saved_pos = Some(pos);
             self.config.position = Some(pos);
@@ -256,8 +266,12 @@ fn top_model(tokens: &TokenStats) -> String {
 }
 
 fn fmt_reset(resets_at: Option<SystemTime>, now: SystemTime) -> String {
-    let Some(t) = resets_at else { return String::new() };
-    let Ok(d) = t.duration_since(now) else { return "resets now".into() };
+    let Some(t) = resets_at else {
+        return String::new();
+    };
+    let Ok(d) = t.duration_since(now) else {
+        return "resets now".into();
+    };
     let secs = d.as_secs();
     let (h, m) = (secs / 3600, (secs % 3600) / 60);
     if h >= 24 {

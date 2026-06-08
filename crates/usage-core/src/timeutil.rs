@@ -37,7 +37,10 @@ pub fn unix_secs_to_systemtime(secs: i64) -> SystemTime {
 
 /// Convert a Unix **milliseconds** timestamp to `SystemTime`.
 pub fn unix_millis_to_systemtime(ms: i64) -> SystemTime {
-    from_unix(ms.div_euclid(1000), (ms.rem_euclid(1000) as u32) * 1_000_000)
+    from_unix(
+        ms.div_euclid(1000),
+        (ms.rem_euclid(1000) as u32) * 1_000_000,
+    )
 }
 
 /// Whole days since the Unix epoch in **UTC** — i.e. a UTC-midnight day index.
@@ -56,7 +59,10 @@ mod tests {
 
     #[test]
     fn iso_epoch_anchors() {
-        assert_eq!(iso8601_to_systemtime("1970-01-01T00:00:00Z").unwrap(), UNIX_EPOCH);
+        assert_eq!(
+            iso8601_to_systemtime("1970-01-01T00:00:00Z").unwrap(),
+            UNIX_EPOCH
+        );
         assert_eq!(
             iso8601_to_systemtime("1970-01-02T00:00:00Z").unwrap(),
             UNIX_EPOCH + Duration::from_secs(86_400)
@@ -98,8 +104,14 @@ mod tests {
 
     #[test]
     fn utc_day_boundaries() {
-        assert_eq!(utc_day(iso8601_to_systemtime("1970-01-01T23:59:59Z").unwrap()), 0);
-        assert_eq!(utc_day(iso8601_to_systemtime("1970-01-02T00:00:01Z").unwrap()), 1);
+        assert_eq!(
+            utc_day(iso8601_to_systemtime("1970-01-01T23:59:59Z").unwrap()),
+            0
+        );
+        assert_eq!(
+            utc_day(iso8601_to_systemtime("1970-01-02T00:00:01Z").unwrap()),
+            1
+        );
         // same day, different times
         let a = iso8601_to_systemtime("2026-06-08T00:00:01Z").unwrap();
         let b = iso8601_to_systemtime("2026-06-08T23:59:59Z").unwrap();

@@ -1,13 +1,12 @@
 # claude-usage-widget — the gpui GUI shell.
 #
-# NOT BUILT YET. Requires, on top of the stable toolchain:
-#   * CMake on PATH                 (gpui builds native deps with it)
-#   * Rust 1.95.0                   (see rust-toolchain.toml; matches Zed)
-#   * MSVC "Desktop development with C++" (already present on this machine)
+# Build requirements (Windows):
+#   * Rust 1.96.0   (pinned in ../../rust-toolchain.toml; gpui needs std::hint::cold_path)
+#   * CMake on PATH (gpui builds native deps with it; bundled with VS 2022)
+#   * MSVC "Desktop development with C++"
 #
-# The git deps track zed `main` with no upstream pin. The VERY FIRST build
-# (milestone M0) must capture working revs into Cargo.lock and add `rev = "..."`
-# to the three git deps below, then commit Cargo.lock.
+# The gpui git deps are pinned to exact revs below (and in Cargo.lock) for
+# reproducible builds. Bump them deliberately, never via `cargo update`.
 
 [package]
 name = "claude-usage-widget"
@@ -23,10 +22,10 @@ usage-core = { path = "../usage-core", features = ["net"] }
 anyhow = "1"
 smol = "2"
 
-# Pin `rev = "<captured-in-M0>"` on these three once a known-good build exists.
-gpui = { git = "https://github.com/zed-industries/zed" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+# Pinned to exact revs for reproducible builds (also locked in Cargo.lock).
+gpui = { git = "https://github.com/zed-industries/zed", rev = "f99fe5d8c2a0bc40375d79bfc09dfa583f421797" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "f99fe5d8c2a0bc40375d79bfc09dfa583f421797", features = ["font-kit"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "06be7113c715bdeba17cb278fefd1175eb1781e2" }
 
 raw-window-handle = "0.6"
 windows = { version = "0.58", features = [

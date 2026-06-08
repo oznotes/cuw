@@ -38,7 +38,10 @@ fn to_window(w: &WindowJson) -> Result<Window> {
         Some(s) => Some(iso8601_to_systemtime(s)?),
         None => None,
     };
-    Ok(Window { used_pct: w.utilization, resets_at })
+    Ok(Window {
+        used_pct: w.utilization,
+        resets_at,
+    })
 }
 
 /// Parse a usage-endpoint response body into a [`QuotaReading`]. Pure.
@@ -109,6 +112,12 @@ mod tests {
     fn rejects_malformed_or_incomplete() {
         assert!(parse_usage_json("{not json", SystemTime::UNIX_EPOCH).is_err());
         // five_hour is required
-        assert!(parse_usage_json(r#"{"seven_day":{"utilization":2.0}}"#, SystemTime::UNIX_EPOCH).is_err());
+        assert!(
+            parse_usage_json(
+                r#"{"seven_day":{"utilization":2.0}}"#,
+                SystemTime::UNIX_EPOCH
+            )
+            .is_err()
+        );
     }
 }

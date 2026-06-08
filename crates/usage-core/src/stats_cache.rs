@@ -23,11 +23,17 @@ pub fn default_path() -> PathBuf {
 /// Empty on any read/parse problem.
 pub fn read_daily_tokens(path: &Path) -> HashMap<String, u64> {
     let mut out = HashMap::new();
-    let Ok(s) = std::fs::read_to_string(path) else { return out };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) else { return out };
+    let Ok(s) = std::fs::read_to_string(path) else {
+        return out;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) else {
+        return out;
+    };
     if let Some(arr) = v.get("dailyModelTokens").and_then(|x| x.as_array()) {
         for entry in arr {
-            let Some(date) = entry.get("date").and_then(|d| d.as_str()) else { continue };
+            let Some(date) = entry.get("date").and_then(|d| d.as_str()) else {
+                continue;
+            };
             let total: u64 = entry
                 .get("tokensByModel")
                 .and_then(|m| m.as_object())
@@ -76,14 +82,21 @@ pub fn build_heatmap(daily: &HashMap<String, u64>, today: NaiveDate, weeks: usiz
 
 /// Convert a `SystemTime` to a UTC `NaiveDate`.
 fn utc_date(now: SystemTime) -> NaiveDate {
-    let secs = now.duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let secs = now
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
     DateTime::from_timestamp(secs, 0)
         .map(|dt| dt.date_naive())
         .unwrap_or_default()
 }
 
 /// `build_heatmap` keyed off a `SystemTime` instead of a `NaiveDate`.
-pub fn build_heatmap_at(daily: &HashMap<String, u64>, now: SystemTime, weeks: usize) -> Vec<[u8; 7]> {
+pub fn build_heatmap_at(
+    daily: &HashMap<String, u64>,
+    now: SystemTime,
+    weeks: usize,
+) -> Vec<[u8; 7]> {
     build_heatmap(daily, utc_date(now), weeks)
 }
 

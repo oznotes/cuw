@@ -1,0 +1,7 @@
+# Repo-wide toolchain pin so EVERY cargo invocation — from the repo root or a
+# crate dir, with or without --manifest-path — uses the same rustc. gpui
+# (zed f99fe5d8) requires `std::hint::cold_path`, stabilized in 1.96.0; building
+# the widget on an older stable fails inside gpui. This pin prevents that.
+[toolchain]
+channel = "1.96.0"
+profile = "minimal"

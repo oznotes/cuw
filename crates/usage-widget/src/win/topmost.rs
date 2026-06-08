@@ -25,7 +25,7 @@ pub fn pin(_window: &gpui::Window) {}
 fn apply_topmost(hwnd: isize) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
     };
 
     let hwnd = HWND(hwnd as *mut core::ffi::c_void);

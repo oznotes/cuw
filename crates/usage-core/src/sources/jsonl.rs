@@ -45,8 +45,12 @@ pub fn parse_line(line: &str, project: &str) -> Result<Option<AssistantRecord>> 
     if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
         return Ok(None);
     }
-    let Some(msg) = v.get("message") else { return Ok(None) };
-    let Some(usage) = msg.get("usage") else { return Ok(None) };
+    let Some(msg) = v.get("message") else {
+        return Ok(None);
+    };
+    let Some(usage) = msg.get("usage") else {
+        return Ok(None);
+    };
     let Some(output_tokens) = usage.get("output_tokens").and_then(|x| x.as_u64()) else {
         return Ok(None);
     };
@@ -56,9 +60,21 @@ pub fn parse_line(line: &str, project: &str) -> Result<Option<AssistantRecord>> 
     let timestamp = iso8601_to_systemtime(ts_str)?;
 
     Ok(Some(AssistantRecord {
-        message_id: msg.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-        request_id: v.get("requestId").and_then(|x| x.as_str()).unwrap_or("").to_string(),
-        model: msg.get("model").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        message_id: msg
+            .get("id")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
+        request_id: v
+            .get("requestId")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
+        model: msg
+            .get("model")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
         output_tokens,
         timestamp,
         project: project.to_string(),
@@ -116,7 +132,10 @@ impl TokenLedger {
 
         if utc_day(rec.timestamp) == self.day {
             *self.by_model_today.entry(rec.model.clone()).or_default() += rec.output_tokens;
-            *self.by_project_today.entry(rec.project.clone()).or_default() += rec.output_tokens;
+            *self
+                .by_project_today
+                .entry(rec.project.clone())
+                .or_default() += rec.output_tokens;
         }
 
         let recent_enough = now
@@ -127,7 +146,11 @@ impl TokenLedger {
             self.recent.push_back((rec.timestamp, rec.output_tokens));
         }
         while let Some(&(ts, _)) = self.recent.front() {
-            if now.duration_since(ts).map(|d| d > RING_KEEP).unwrap_or(false) {
+            if now
+                .duration_since(ts)
+                .map(|d| d > RING_KEEP)
+                .unwrap_or(false)
+            {
                 self.recent.pop_front();
             } else {
                 break;
@@ -141,14 +164,20 @@ impl TokenLedger {
         let today_valid = utc_day(now) == self.day;
 
         let mut by_model: Vec<(String, u64)> = if today_valid {
-            self.by_model_today.iter().map(|(k, v)| (k.clone(), *v)).collect()
+            self.by_model_today
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect()
         } else {
             Vec::new()
         };
         by_model.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
         let mut top_projects: Vec<(String, u64)> = if today_valid {
-            self.by_project_today.iter().map(|(k, v)| (k.clone(), *v)).collect()
+            self.by_project_today
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect()
         } else {
             Vec::new()
         };
@@ -159,7 +188,11 @@ impl TokenLedger {
         let live_sum: u64 = self
             .recent
             .iter()
-            .filter(|(ts, _)| now.duration_since(*ts).map(|d| d <= LIVE_WINDOW).unwrap_or(false))
+            .filter(|(ts, _)| {
+                now.duration_since(*ts)
+                    .map(|d| d <= LIVE_WINDOW)
+                    .unwrap_or(false)
+            })
             .map(|(_, v)| *v)
             .sum();
         let live_tok_per_min = if live_sum > 0 {
@@ -168,7 +201,12 @@ impl TokenLedger {
             None
         };
 
-        TokenStats { today_total_output, by_model, live_tok_per_min, top_projects }
+        TokenStats {
+            today_total_output,
+            by_model,
+            live_tok_per_min,
+            top_projects,
+        }
     }
 }
 
@@ -186,7 +224,9 @@ impl Default for Cursor {
 
 impl Cursor {
     pub fn new() -> Self {
-        Cursor { offsets: HashMap::new() }
+        Cursor {
+            offsets: HashMap::new(),
+        }
     }
 
     /// Read newly appended lines across `projects_root/*/*.jsonl` (excluding any
@@ -256,13 +296,17 @@ impl Cursor {
 /// Two-level walk: `root/<slug>/*.jsonl`, excluding any path containing `subagents`.
 fn jsonl_files(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(slugs) = std::fs::read_dir(root) else { return out };
+    let Ok(slugs) = std::fs::read_dir(root) else {
+        return out;
+    };
     for slug in slugs.flatten() {
         let dir = slug.path();
         if !dir.is_dir() {
             continue;
         }
-        let Ok(files) = std::fs::read_dir(&dir) else { continue };
+        let Ok(files) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for f in files.flatten() {
             let fp = f.path();
             if fp.extension().and_then(|e| e.to_str()) == Some("jsonl")
@@ -313,9 +357,17 @@ mod tests {
     #[test]
     fn parse_skips_non_assistant_and_blank() {
         assert!(parse_line("", "p").unwrap().is_none());
-        assert!(parse_line(r#"{"type":"user","message":{}}"#, "p").unwrap().is_none());
+        assert!(
+            parse_line(r#"{"type":"user","message":{}}"#, "p")
+                .unwrap()
+                .is_none()
+        );
         // assistant but no usage
-        assert!(parse_line(r#"{"type":"assistant","message":{"id":"x"}}"#, "p").unwrap().is_none());
+        assert!(
+            parse_line(r#"{"type":"assistant","message":{"id":"x"}}"#, "p")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -354,7 +406,10 @@ mod tests {
         led.ingest(&rec(ts, "m3", "r3", "opus", 50), now);
         let s = led.stats(now);
         assert_eq!(s.today_total_output, 450);
-        assert_eq!(s.by_model, vec![("sonnet".into(), 300), ("opus".into(), 150)]);
+        assert_eq!(
+            s.by_model,
+            vec![("sonnet".into(), 300), ("opus".into(), 150)]
+        );
     }
 
     #[test]
@@ -415,8 +470,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("projects");
         let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
-        write_session(&root, "subagents", "s.jsonl",
-            &format!("{}\n", line("2026-06-08T11:00:00Z", "m", "r", "opus", 100)));
+        write_session(
+            &root,
+            "subagents",
+            "s.jsonl",
+            &format!("{}\n", line("2026-06-08T11:00:00Z", "m", "r", "opus", 100)),
+        );
         let mut cur = Cursor::new();
         let mut led = TokenLedger::new();
         assert_eq!(cur.update(&root, &mut led, now).unwrap(), 0);
@@ -438,7 +497,11 @@ mod tests {
         assert_eq!(cur.update(&root, &mut led, now).unwrap(), 2);
 
         // rotate: a shorter file (len < prev) forces a re-read from 0
-        std::fs::write(&p, format!("{}\n", line("2026-06-08T11:20:00Z", "m9", "r9", "opus", 7))).unwrap();
+        std::fs::write(
+            &p,
+            format!("{}\n", line("2026-06-08T11:20:00Z", "m9", "r9", "opus", 7)),
+        )
+        .unwrap();
         assert_eq!(cur.update(&root, &mut led, now).unwrap(), 1);
     }
 

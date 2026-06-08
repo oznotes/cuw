@@ -9,7 +9,7 @@ Built in two crates so the data/logic core is testable on its own:
 | Crate | What | Builds with |
 |---|---|---|
 | **`usage-core`** | All data + logic: quota sources, JSONL token parsing, reconciliation, the `UsageSnapshot` model, config, the status-line helper. **No GUI.** | stable Rust (here: 1.94.1) — **no cmake** |
-| **`usage-widget`** | The gpui + gpui-component GUI shell (window, gauges, always-on-top, Mica). Thin cap over `usage-core`. | Rust 1.95 + **CMake** + MSVC |
+| **`usage-widget`** | The gpui + gpui-component GUI shell (window, gauges, always-on-top, Mica). Thin cap over `usage-core`. | Rust 1.96 + **CMake** + MSVC |
 
 ## Status (2026-06-08)
 
@@ -61,7 +61,7 @@ read with no network call. Re-run the snapshot example and the quota source beco
 ## Finishing the GUI (milestone M0 onward)
 
 1. Install prerequisites: **CMake** (`winget install Kitware.CMake`) and
-   **Rust 1.95** (`rustup toolchain install 1.95.0`). MSVC "Desktop development
+   **Rust 1.96** (`rustup toolchain install 1.96.0`). MSVC "Desktop development
    with C++" is already present.
 2. `cd crates/usage-widget`
 3. **M0 spike:** get a borderless gpui-component window up with the Mica backdrop +

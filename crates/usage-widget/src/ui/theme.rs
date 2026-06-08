@@ -3,7 +3,7 @@
 //!
 //! M2: confirm `gpui::hsla`/`Hsla` are the right constructors for the pinned rev.
 
-use gpui::{hsla, Hsla};
+use gpui::{Hsla, hsla};
 use usage_core::model::Level;
 
 /// Green under warn, amber in the warn band, red at/above critical.

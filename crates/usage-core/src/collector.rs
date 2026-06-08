@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime};
 use crate::config::Config;
 use crate::model::{Provenance, UsageSnapshot, Window};
 use crate::sources::jsonl::{Cursor, TokenLedger};
-use crate::sources::{reconcile, statusline, QuotaReading};
+use crate::sources::{QuotaReading, reconcile, statusline};
 
 /// Returns a fresh OAuth reading (stamped at `now`) or `None` on failure.
 pub type OauthFetch = Box<dyn FnMut(SystemTime) -> Option<QuotaReading> + Send>;
@@ -34,7 +34,12 @@ impl Collector {
         let claude = dirs::home_dir().unwrap_or_default().join(".claude");
         let projects_root = claude.join("projects");
         let statusline_cache = statusline::cache_path();
-        Self::with_deps(config, projects_root, statusline_cache, default_oauth_fetch())
+        Self::with_deps(
+            config,
+            projects_root,
+            statusline_cache,
+            default_oauth_fetch(),
+        )
     }
 
     /// Construct with explicit paths + fetcher (used by tests).
@@ -61,14 +66,20 @@ impl Collector {
         let max_age = Duration::from_secs(self.config.statusline_max_age_secs);
 
         // 1. Local token detail (incremental).
-        let _ = self.cursor.update(&self.projects_root, &mut self.ledger, now);
+        let _ = self
+            .cursor
+            .update(&self.projects_root, &mut self.ledger, now);
         let tokens = self.ledger.stats(now);
 
         // 2. Status-line cache.
         let sl = statusline::read_cache(&self.statusline_cache);
         let sl_fresh = sl
             .as_ref()
-            .map(|r| now.duration_since(r.observed_at).map(|d| d <= max_age).unwrap_or(true))
+            .map(|r| {
+                now.duration_since(r.observed_at)
+                    .map(|d| d <= max_age)
+                    .unwrap_or(true)
+            })
             .unwrap_or(false);
 
         // 3. Poll OAuth only if the status line isn't fresh AND the throttle elapsed.
@@ -105,8 +116,14 @@ impl Collector {
                 }
             }
             None => UsageSnapshot {
-                five_hour: Window { used_pct: 0.0, resets_at: None },
-                seven_day: Window { used_pct: 0.0, resets_at: None },
+                five_hour: Window {
+                    used_pct: 0.0,
+                    resets_at: None,
+                },
+                seven_day: Window {
+                    used_pct: 0.0,
+                    resets_at: None,
+                },
                 seven_day_opus: None,
                 tokens,
                 source: Provenance::Stale { last_good_at: now },
@@ -126,10 +143,12 @@ fn default_oauth_fetch() -> OauthFetch {
     Box::new(|now| {
         let token = read_access_token()?;
         let version = detect_cc_version();
-        crate::sources::oauth::fetch(&token, &version).ok().map(|mut r| {
-            r.observed_at = now;
-            r
-        })
+        crate::sources::oauth::fetch(&token, &version)
+            .ok()
+            .map(|mut r| {
+                r.observed_at = now;
+                r
+            })
     })
 }
 
@@ -189,8 +208,8 @@ mod tests {
     use super::*;
     use crate::model::Window;
     use crate::timeutil::iso8601_to_systemtime;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn cfg() -> Config {
         Config::default()
@@ -198,8 +217,14 @@ mod tests {
 
     fn oauth_reading(pct: f32, now: SystemTime) -> QuotaReading {
         QuotaReading {
-            five_hour: Window { used_pct: pct, resets_at: None },
-            seven_day: Window { used_pct: pct / 2.0, resets_at: None },
+            five_hour: Window {
+                used_pct: pct,
+                resets_at: None,
+            },
+            seven_day: Window {
+                used_pct: pct / 2.0,
+                resets_at: None,
+            },
             seven_day_opus: None,
             source: Provenance::OAuth,
             observed_at: now,
@@ -296,8 +321,11 @@ mod tests {
                 r#"{{"type":"assistant","timestamp":"2026-06-08T11:00:00Z","requestId":"{req}","message":{{"id":"{msg}","model":"opus","usage":{{"output_tokens":{out}}}}}}}"#
             )
         };
-        std::fs::write(slug.join("s.jsonl"), format!("{}\n{}\n", l("m1", "r1", 100), l("m2", "r2", 250)))
-            .unwrap();
+        std::fs::write(
+            slug.join("s.jsonl"),
+            format!("{}\n{}\n", l("m1", "r1", 100), l("m2", "r2", 250)),
+        )
+        .unwrap();
 
         let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
         let sl_path = PathBuf::from("Z:/nope/ratelimits.json");

@@ -61,7 +61,11 @@ pub fn reconcile(
     }
     // Degrade: show the freshest stale thing we have.
     let stale = match (statusline, last_good) {
-        (Some(sl), Some(lg)) => Some(if sl.observed_at >= lg.observed_at { sl } else { lg }),
+        (Some(sl), Some(lg)) => Some(if sl.observed_at >= lg.observed_at {
+            sl
+        } else {
+            lg
+        }),
         (Some(sl), None) => Some(sl),
         (None, Some(lg)) => Some(lg),
         (None, None) => None,
@@ -78,8 +82,14 @@ mod tests {
 
     fn reading(pct: f32, age_secs: u64, now: SystemTime, source: Provenance) -> QuotaReading {
         QuotaReading {
-            five_hour: Window { used_pct: pct, resets_at: None },
-            seven_day: Window { used_pct: pct / 2.0, resets_at: None },
+            five_hour: Window {
+                used_pct: pct,
+                resets_at: None,
+            },
+            seven_day: Window {
+                used_pct: pct / 2.0,
+                resets_at: None,
+            },
             seven_day_opus: None,
             source,
             observed_at: now - Duration::from_secs(age_secs),
@@ -127,7 +137,12 @@ mod tests {
         let observed = sl.observed_at;
         let (r, prov) = reconcile(Some(sl), None, None, n, MAX_AGE).unwrap();
         assert_eq!(r.five_hour.used_pct, 50.0);
-        assert_eq!(prov, Provenance::Stale { last_good_at: observed });
+        assert_eq!(
+            prov,
+            Provenance::Stale {
+                last_good_at: observed
+            }
+        );
     }
 
     #[test]
@@ -137,7 +152,12 @@ mod tests {
         let observed = lg.observed_at;
         let (r, prov) = reconcile(None, None, Some(lg), n, MAX_AGE).unwrap();
         assert_eq!(r.five_hour.used_pct, 42.0);
-        assert_eq!(prov, Provenance::Stale { last_good_at: observed });
+        assert_eq!(
+            prov,
+            Provenance::Stale {
+                last_good_at: observed
+            }
+        );
     }
 
     #[test]

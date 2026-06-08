@@ -108,8 +108,7 @@ impl Config {
             .with_context(|| format!("writing {}", tmp.display()))?;
         // std::fs::rename replaces an existing destination on Windows
         // (MoveFileExW + MOVEFILE_REPLACE_EXISTING).
-        std::fs::rename(&tmp, path)
-            .with_context(|| format!("renaming into {}", path.display()))?;
+        std::fs::rename(&tmp, path).with_context(|| format!("renaming into {}", path.display()))?;
         Ok(())
     }
 }
