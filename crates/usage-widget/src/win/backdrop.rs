@@ -25,17 +25,45 @@ pub fn appearance(backdrop: Backdrop) -> gpui::WindowBackgroundAppearance {
     }
 }
 
-/// True on Windows 11 (build >= 22000), where Mica is supported.
-///
-/// M0: bind `RtlGetVersion` (ntdll) for a manifest-independent build number, or
-/// read `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuildNumber`.
-/// This machine is build 26200, so the conservative default is `true`.
+fn supports_mica(build: u32) -> bool {
+    build >= 22_000
+}
+
+/// True on Windows 11 (build >= 22000), where Mica is supported. Uses
+/// `RtlGetVersion`, which is not affected by application compatibility
+/// manifests the way older version helpers can be.
 #[cfg(target_os = "windows")]
 fn is_win11() -> bool {
-    true
+    windows_build_number().map(supports_mica).unwrap_or(false)
 }
 
 #[cfg(not(target_os = "windows"))]
 fn is_win11() -> bool {
     false
+}
+
+#[cfg(target_os = "windows")]
+fn windows_build_number() -> Option<u32> {
+    use windows::Wdk::System::SystemServices::RtlGetVersion;
+    use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
+
+    let mut version = OSVERSIONINFOW::default();
+    version.dwOSVersionInfoSize = std::mem::size_of::<OSVERSIONINFOW>() as u32;
+
+    // SAFETY: `version` points to initialized writable storage for the OS to
+    // fill, and the size field is set as required by RtlGetVersion.
+    let status = unsafe { RtlGetVersion(&mut version) };
+    status.is_ok().then_some(version.dwBuildNumber)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::supports_mica;
+
+    #[test]
+    fn mica_requires_windows_11_build() {
+        assert!(!supports_mica(21_999));
+        assert!(supports_mica(22_000));
+        assert!(supports_mica(26_200));
+    }
 }

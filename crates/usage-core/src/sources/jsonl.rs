@@ -88,6 +88,9 @@ pub struct TokenLedger {
     day: i64,
     by_model_today: HashMap<String, u64>,
     by_project_today: HashMap<String, u64>,
+    /// All-time output tokens per UTC-day index, for the activity heatmap.
+    /// (Not cleared on day rolls — this is the full history.)
+    by_day: HashMap<i64, u64>,
     recent: VecDeque<(SystemTime, u64)>,
 }
 
@@ -104,6 +107,7 @@ impl TokenLedger {
             day: i64::MIN,
             by_model_today: HashMap::new(),
             by_project_today: HashMap::new(),
+            by_day: HashMap::new(),
             recent: VecDeque::new(),
         }
     }
@@ -129,6 +133,9 @@ impl TokenLedger {
                 return; // duplicate streaming row — skip
             }
         }
+
+        // All-time per-day total (for the activity heatmap; survives day rolls).
+        *self.by_day.entry(utc_day(rec.timestamp)).or_default() += rec.output_tokens;
 
         if utc_day(rec.timestamp) == self.day {
             *self.by_model_today.entry(rec.model.clone()).or_default() += rec.output_tokens;
@@ -206,7 +213,45 @@ impl TokenLedger {
             by_model,
             live_tok_per_min,
             top_projects,
+            activity_heatmap: Vec::new(),
         }
+    }
+
+    /// GitHub-style activity grid from the all-time JSONL day totals (current
+    /// data, unlike the periodically-recomputed stats-cache). Shows at most
+    /// `max_weeks` columns, but **trims leading empty weeks** so the first
+    /// column is the earliest active week — no blank left half. Each column is
+    /// `[u8; 7]` of levels for Sunday..Saturday; the last column contains `now`.
+    pub fn activity_heatmap(&self, now: SystemTime, max_weeks: usize) -> Vec<[u8; 7]> {
+        let today = utc_day(now);
+        let max_weeks = max_weeks.max(1) as i64;
+        // 1970-01-01 (day index 0) was a Thursday; days-from-Sunday = (d + 4) mod 7.
+        let last_sunday = today - (today + 4).rem_euclid(7);
+        let window_start = last_sunday - 7 * (max_weeks - 1);
+
+        // Start the grid at the week of the earliest active day in the window.
+        let first_sunday = self
+            .by_day
+            .iter()
+            .filter_map(|(&d, &t)| (t > 0 && d >= window_start && d <= today).then_some(d))
+            .min()
+            .map(|d| d - (d + 4).rem_euclid(7))
+            .unwrap_or(last_sunday);
+        let weeks = (((last_sunday - first_sunday) / 7) + 1) as usize;
+
+        let mut grid = Vec::with_capacity(weeks);
+        for w in 0..weeks {
+            let mut col = [0u8; 7];
+            for (d, cell) in col.iter_mut().enumerate() {
+                let idx = first_sunday + 7 * w as i64 + d as i64;
+                if idx <= today {
+                    *cell =
+                        crate::stats_cache::level_for(self.by_day.get(&idx).copied().unwrap_or(0));
+                }
+            }
+            grid.push(col);
+        }
+        grid
     }
 }
 
@@ -241,6 +286,7 @@ impl Cursor {
         now: SystemTime,
     ) -> Result<usize> {
         let mut new_count = 0usize;
+        let mut first_error: Option<anyhow::Error> = None;
 
         for file in jsonl_files(projects_root) {
             let project = file
@@ -281,15 +327,26 @@ impl Cursor {
             };
             for line_bytes in process.split(|&b| b == b'\n') {
                 let line = String::from_utf8_lossy(line_bytes);
-                if let Ok(Some(rec)) = parse_line(&line, &project) {
-                    ledger.ingest(&rec, now);
-                    new_count += 1;
+                match parse_line(&line, &project) {
+                    Ok(Some(rec)) => {
+                        ledger.ingest(&rec, now);
+                        new_count += 1;
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        if first_error.is_none() {
+                            first_error = Some(err.context(format!("parsing {}", file.display())));
+                        }
+                    }
                 }
             }
             self.offsets.insert(file.clone(), consumed);
         }
 
-        Ok(new_count)
+        match first_error {
+            Some(err) => Err(err),
+            None => Ok(new_count),
+        }
     }
 }
 
@@ -433,6 +490,23 @@ mod tests {
         assert_eq!(led.stats(now).live_tok_per_min, Some(1000.0));
     }
 
+    #[test]
+    fn ledger_activity_heatmap_trims_leading_empty() {
+        let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap(); // a Monday
+        let mut led = TokenLedger::new();
+        led.ingest(&rec(now, "m1", "r1", "opus", 60_000), now); // today => level 2
+        let two_weeks_ago = now - Duration::from_secs(14 * 86_400); // a Monday
+        led.ingest(&rec(two_weeks_ago, "m2", "r2", "opus", 10_000), now); // => level 1
+
+        // max 8 weeks, but data spans only 3 calendar weeks => trimmed to 3.
+        let grid = led.activity_heatmap(now, 8);
+        assert_eq!(grid.len(), 3);
+        assert_eq!(grid[2][1], 2); // today (Monday), last column
+        assert_eq!(grid[0][1], 1); // two-weeks-ago Monday, first column
+        assert_eq!(grid[1][1], 0); // the middle week had no activity
+        assert_eq!(grid[2][6], 0); // future (Saturday) stays 0
+    }
+
     // ---- Cursor ----
 
     fn write_session(root: &Path, slug: &str, file: &str, contents: &str) -> PathBuf {
@@ -519,5 +593,26 @@ mod tests {
         let mut f = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
         write!(f, "\n").unwrap(); // complete the line
         assert_eq!(cur.update(&root, &mut led, now).unwrap(), 1);
+    }
+
+    #[test]
+    fn cursor_reports_malformed_lines_but_keeps_good_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("projects");
+        let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
+        let good = line("2026-06-08T11:00:00Z", "m1", "r1", "opus", 100);
+        write_session(
+            &root,
+            "projA",
+            "sess1.jsonl",
+            &format!("{good}\n{{bad json\n"),
+        );
+
+        let mut cur = Cursor::new();
+        let mut led = TokenLedger::new();
+        let err = cur.update(&root, &mut led, now).unwrap_err();
+
+        assert!(err.to_string().contains("parsing"));
+        assert_eq!(led.stats(now).today_total_output, 100);
     }
 }

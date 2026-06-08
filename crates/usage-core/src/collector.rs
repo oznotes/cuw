@@ -9,12 +9,13 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use crate::config::Config;
-use crate::model::{Provenance, UsageSnapshot, Window};
+use crate::model::{Diagnostics, LiveSource, Provenance, UsageSnapshot, Window};
 use crate::sources::jsonl::{Cursor, TokenLedger};
 use crate::sources::{QuotaReading, reconcile, statusline};
 
-/// Returns a fresh OAuth reading (stamped at `now`) or `None` on failure.
-pub type OauthFetch = Box<dyn FnMut(SystemTime) -> Option<QuotaReading> + Send>;
+/// Returns a fresh OAuth reading stamped at `now`, `None` when intentionally
+/// unavailable, or a short diagnostic error on failure.
+pub type OauthFetch = Box<dyn FnMut(SystemTime) -> Result<Option<QuotaReading>, String> + Send>;
 
 pub struct Collector {
     cursor: Cursor,
@@ -66,13 +67,23 @@ impl Collector {
         let max_age = Duration::from_secs(self.config.statusline_max_age_secs);
 
         // 1. Local token detail (incremental).
-        let _ = self
+        let jsonl_error = self
             .cursor
-            .update(&self.projects_root, &mut self.ledger, now);
-        let tokens = self.ledger.stats(now);
+            .update(&self.projects_root, &mut self.ledger, now)
+            .err()
+            .map(|e| e.to_string());
+        let mut tokens = self.ledger.stats(now);
+        // Build the activity grid from the live JSONL day totals (the stats-cache
+        // is recomputed too infrequently to reflect recent days). 15 weeks ≈ a quarter.
+        tokens.activity_heatmap = self.ledger.activity_heatmap(now, 15);
 
         // 2. Status-line cache.
         let sl = statusline::read_cache(&self.statusline_cache);
+        let statusline_age_secs = sl.as_ref().map(|r| {
+            now.duration_since(r.observed_at)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        });
         let sl_fresh = sl
             .as_ref()
             .map(|r| {
@@ -90,15 +101,30 @@ impl Collector {
                 .map(|d| d >= Duration::from_secs(self.config.quota_poll_secs))
                 .unwrap_or(true),
         };
+        let mut oauth_error = None;
         let oauth = if !sl_fresh && throttle_ok {
             self.last_oauth_at = Some(now);
-            (self.oauth_fetch)(now)
+            match (self.oauth_fetch)(now) {
+                Ok(reading) => reading,
+                Err(err) => {
+                    oauth_error = Some(err);
+                    None
+                }
+            }
         } else {
             None
         };
 
         // 4. Reconcile.
         let chosen = reconcile(sl, oauth, self.last_good.clone(), now, max_age);
+        let diagnostics = Diagnostics {
+            statusline_age_secs,
+            last_quota_success: chosen
+                .as_ref()
+                .and_then(|(reading, _)| live_source(&reading.source)),
+            jsonl_error,
+            oauth_error,
+        };
 
         // 5. Build the snapshot.
         match chosen {
@@ -113,6 +139,7 @@ impl Collector {
                     tokens,
                     source: prov,
                     fetched_at: now,
+                    diagnostics,
                 }
             }
             None => UsageSnapshot {
@@ -128,14 +155,23 @@ impl Collector {
                 tokens,
                 source: Provenance::Stale { last_good_at: now },
                 fetched_at: now,
+                diagnostics,
             },
         }
     }
 }
 
+fn live_source(source: &Provenance) -> Option<LiveSource> {
+    match source {
+        Provenance::StatusLine => Some(LiveSource::StatusLine),
+        Provenance::OAuth => Some(LiveSource::OAuth),
+        Provenance::Stale { .. } => None,
+    }
+}
+
 #[cfg(not(feature = "net"))]
 fn default_oauth_fetch() -> OauthFetch {
-    Box::new(|_now| None)
+    Box::new(|_now| Ok(None))
 }
 
 #[cfg(feature = "net")]
@@ -144,11 +180,11 @@ fn default_oauth_fetch() -> OauthFetch {
         let token = read_access_token()?;
         let version = detect_cc_version();
         crate::sources::oauth::fetch(&token, &version)
-            .ok()
             .map(|mut r| {
                 r.observed_at = now;
-                r
+                Some(r)
             })
+            .map_err(|e| format!("OAuth usage fetch failed: {e:#}"))
     })
 }
 
@@ -193,20 +229,26 @@ fn detect_cc_version() -> String {
 
 /// Read `claudeAiOauth.accessToken` from `~/.claude/.credentials.json`.
 #[cfg(feature = "net")]
-fn read_access_token() -> Option<String> {
-    let path = dirs::home_dir()?.join(".claude").join(".credentials.json");
-    let s = std::fs::read_to_string(path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
-    v.get("claudeAiOauth")?
-        .get("accessToken")?
-        .as_str()
+fn read_access_token() -> Result<String, String> {
+    let path = dirs::home_dir()
+        .ok_or_else(|| "home directory not found".to_string())?
+        .join(".claude")
+        .join(".credentials.json");
+    let s = std::fs::read_to_string(&path)
+        .map_err(|e| format!("reading {} failed: {e}", path.display()))?;
+    let v: serde_json::Value =
+        serde_json::from_str(&s).map_err(|e| format!("parsing {} failed: {e}", path.display()))?;
+    v.get("claudeAiOauth")
+        .and_then(|x| x.get("accessToken"))
+        .and_then(|x| x.as_str())
         .map(|s| s.to_string())
+        .ok_or_else(|| format!("{} is missing claudeAiOauth.accessToken", path.display()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Window;
+    use crate::model::{LiveSource, Window};
     use crate::timeutil::iso8601_to_systemtime;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -237,9 +279,13 @@ mod tests {
         let c = calls.clone();
         let f: OauthFetch = Box::new(move |now| {
             c.fetch_add(1, Ordering::SeqCst);
-            ret.map(|p| oauth_reading(p, now))
+            Ok(ret.map(|p| oauth_reading(p, now)))
         });
         (f, calls)
+    }
+
+    fn failing_fetch(msg: &'static str) -> OauthFetch {
+        Box::new(move |_now| Err(msg.to_string()))
     }
 
     fn empty_projects() -> (tempfile::TempDir, PathBuf) {
@@ -269,6 +315,12 @@ mod tests {
         assert_eq!(snap.source, Provenance::StatusLine);
         assert_eq!(snap.five_hour.used_pct, 55.0);
         assert_eq!(calls.load(Ordering::SeqCst), 0); // oauth not polled
+        assert_eq!(snap.diagnostics.statusline_age_secs, Some(0));
+        assert_eq!(
+            snap.diagnostics.last_quota_success,
+            Some(LiveSource::StatusLine)
+        );
+        assert_eq!(snap.diagnostics.oauth_error, None);
     }
 
     #[test]
@@ -284,6 +336,7 @@ mod tests {
         assert_eq!(s1.source, Provenance::OAuth);
         assert_eq!(s1.five_hour.used_pct, 60.0);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(s1.diagnostics.last_quota_success, Some(LiveSource::OAuth));
 
         // immediate second tick: throttle blocks the poll; falls back to last_good as Stale
         let s2 = c.tick(now + Duration::from_secs(5));
@@ -302,13 +355,27 @@ mod tests {
         let (_d, root) = empty_projects();
         let sl_path = PathBuf::from("Z:/nope/ratelimits.json");
         let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_780_000_000);
-        let (fetch, _calls) = counting_fetch(None); // oauth fails
+        let (fetch, _calls) = counting_fetch(None); // no oauth reading available
         let mut c = Collector::with_deps(cfg(), root, sl_path, fetch);
 
         let snap = c.tick(now);
         assert!(matches!(snap.source, Provenance::Stale { .. }));
         assert_eq!(snap.five_hour.used_pct, 0.0);
         assert_eq!(snap.seven_day.used_pct, 0.0);
+    }
+
+    #[test]
+    fn oauth_error_is_reported_in_diagnostics() {
+        let (_d, root) = empty_projects();
+        let sl_path = PathBuf::from("Z:/nope/ratelimits.json");
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_780_000_000);
+        let mut c = Collector::with_deps(cfg(), root, sl_path, failing_fetch("oauth boom"));
+
+        let snap = c.tick(now);
+
+        assert!(matches!(snap.source, Provenance::Stale { .. }));
+        assert_eq!(snap.diagnostics.oauth_error.as_deref(), Some("oauth boom"));
+        assert_eq!(snap.diagnostics.last_quota_success, None);
     }
 
     #[test]
@@ -334,5 +401,37 @@ mod tests {
 
         let snap = c.tick(now);
         assert_eq!(snap.tokens.today_total_output, 350);
+    }
+
+    #[test]
+    fn jsonl_error_is_reported_but_good_records_remain() {
+        let (_d, root) = empty_projects();
+        let slug = root.join("projA");
+        std::fs::create_dir_all(&slug).unwrap();
+        std::fs::write(
+            slug.join("s.jsonl"),
+            concat!(
+                r#"{"type":"assistant","timestamp":"2026-06-08T11:00:00Z","requestId":"r1","message":{"id":"m1","model":"opus","usage":{"output_tokens":100}}}"#,
+                "\n",
+                "{bad json\n"
+            ),
+        )
+        .unwrap();
+
+        let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
+        let sl_path = PathBuf::from("Z:/nope/ratelimits.json");
+        let (fetch, _c) = counting_fetch(Some(10.0));
+        let mut c = Collector::with_deps(cfg(), root, sl_path, fetch);
+
+        let snap = c.tick(now);
+
+        assert_eq!(snap.tokens.today_total_output, 100);
+        assert!(
+            snap.diagnostics
+                .jsonl_error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("parsing")
+        );
     }
 }

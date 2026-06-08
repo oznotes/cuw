@@ -49,6 +49,27 @@ pub enum Provenance {
     Stale { last_good_at: SystemTime },
 }
 
+/// Live quota source that produced the last usable reading.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveSource {
+    StatusLine,
+    OAuth,
+}
+
+/// Best-effort health detail for the current snapshot. The widget can stay
+/// quiet by default while still exposing enough context for troubleshooting.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Diagnostics {
+    /// Age of the readable status-line cache, if one exists.
+    pub statusline_age_secs: Option<u64>,
+    /// Source of the displayed quota reading, including stale fallbacks.
+    pub last_quota_success: Option<LiveSource>,
+    /// Last JSONL ingestion problem observed during this tick.
+    pub jsonl_error: Option<String>,
+    /// Last OAuth polling problem observed during this tick.
+    pub oauth_error: Option<String>,
+}
+
 /// Local token detail derived from the JSONL transcripts. Informational —
 /// the headline is the quota windows, not these counts.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -62,6 +83,8 @@ pub struct TokenStats {
     pub live_tok_per_min: Option<f64>,
     /// Top projects by output tokens today, sorted descending (popup-only).
     pub top_projects: Vec<(String, u64)>,
+    /// Compact activity grid, oldest week to newest week, Sunday..Saturday.
+    pub activity_heatmap: Vec<[u8; 7]>,
 }
 
 /// One immutable refresh of everything the widget shows.
@@ -76,6 +99,7 @@ pub struct UsageSnapshot {
     pub tokens: TokenStats,
     pub source: Provenance,
     pub fetched_at: SystemTime,
+    pub diagnostics: Diagnostics,
 }
 
 #[cfg(test)]

@@ -22,13 +22,13 @@ use gpui_component::{
 
 use usage_core::collector::Collector;
 use usage_core::config::Config;
-use usage_core::model::{Level, Provenance, TokenStats, UsageSnapshot, Window as UWindow};
+use usage_core::model::{Level, LiveSource, Provenance, UsageSnapshot, Window as UWindow};
 
 use crate::win;
 
 mod theme;
 
-actions!(claude_usage_widget, [Quit, RefreshNow]);
+actions!(claude_usage_widget, [Quit, RefreshNow, ToggleDetails]);
 
 type Shared = Arc<Mutex<Option<UsageSnapshot>>>;
 
@@ -102,7 +102,7 @@ fn window_options(config: &Config) -> WindowOptions {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin,
-            size: size(px(300.0), px(168.0)),
+            size: widget_size(false),
         })),
         window_background: win::backdrop::appearance(config.backdrop),
         is_resizable: false,
@@ -112,10 +112,15 @@ fn window_options(config: &Config) -> WindowOptions {
     }
 }
 
+fn widget_size(show_details: bool) -> Size<Pixels> {
+    size(px(300.0), px(if show_details { 392.0 } else { 196.0 }))
+}
+
 struct Widget {
     shared: Shared,
     config: Config,
     last_saved_pos: Option<(f32, f32)>,
+    show_details: bool,
 }
 
 impl Widget {
@@ -135,6 +140,7 @@ impl Widget {
             shared,
             config,
             last_saved_pos: None,
+            show_details: false,
         }
     }
 
@@ -188,6 +194,31 @@ impl Widget {
             )
             .child(div().text_xs().child(fmt_reset(w.resets_at, now)))
     }
+
+    fn toggle_details(&mut self, _: &ToggleDetails, window: &mut Window, cx: &mut Context<Self>) {
+        self.flip_details(window, cx);
+    }
+
+    fn flip_details(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_details = !self.show_details;
+        window.resize(widget_size(self.show_details));
+        cx.notify();
+    }
+
+    /// A small centered chevron at the bottom that expands/collapses Details.
+    fn expand_toggle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let glyph = if self.show_details { "▴" } else { "▾" };
+        let muted = cx.theme().muted_foreground;
+        h_flex()
+            .id("expand-toggle")
+            .w_full()
+            .justify_center()
+            .child(div().text_xs().text_color(muted).child(glyph))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseDownEvent, window, cx| this.flip_details(window, cx)),
+            )
+    }
 }
 
 impl Render for Widget {
@@ -206,22 +237,15 @@ impl Render for Widget {
             .gap_2()
             .p_3()
             .rounded_xl()
-            .bg(rgba(0x1a1d26cc))
+            .bg(theme::scrim())
             .text_color(fg);
 
         let root = match snap {
             None => root.child(div().text_sm().text_color(muted).child("Loading usage…")),
             Some(snap) => {
-                let prov = match &snap.source {
-                    Provenance::StatusLine => "live",
-                    Provenance::OAuth => "oauth",
-                    Provenance::Stale { .. } => "stale",
-                };
-                let footer = format!(
-                    "today {} · {}",
-                    fmt_tokens(snap.tokens.today_total_output),
-                    top_model(&snap.tokens)
-                );
+                let prov = source_label(&snap, now);
+                let footer = footer_text(&snap);
+                let diagnostics = diagnostic_text(&snap, now);
                 // Header is the drag handle (native HTCAPTION on Windows).
                 let header = h_flex()
                     .justify_between()
@@ -230,20 +254,31 @@ impl Render for Widget {
                     .child(div().text_xs().text_color(muted).child(prov))
                     .window_control_area(WindowControlArea::Drag);
 
-                root.child(header)
+                let mut root = root
+                    .child(header)
                     .child(self.window_row("5H", &snap.five_hour, now))
                     .child(self.window_row("7D", &snap.seven_day, now))
-                    .child(div().text_xs().text_color(muted).child(footer))
+                    .child(div().text_xs().text_color(muted).child(footer));
+                if self.show_details {
+                    root = root.child(details_panel(&snap, now, muted));
+                    if let Some(diagnostics) = diagnostics {
+                        root = root.child(div().text_xs().text_color(muted).child(diagnostics));
+                    }
+                }
+                root.child(self.expand_toggle(cx))
             }
         };
 
         // Right-click anywhere on the body for the menu (drag header excepted,
         // where Windows shows its own system menu).
-        root.context_menu(|menu, _window, _cx| {
-            menu.menu("Refresh now", Box::new(RefreshNow))
-                .separator()
-                .menu("Quit", Box::new(Quit))
-        })
+        let show_details = self.show_details;
+        root.on_action(cx.listener(Self::toggle_details))
+            .context_menu(move |menu, _window, _cx| {
+                menu.menu("Refresh now", Box::new(RefreshNow))
+                    .menu_with_check("Details", show_details, Box::new(ToggleDetails))
+                    .separator()
+                    .menu("Quit", Box::new(Quit))
+            })
     }
 }
 
@@ -257,12 +292,214 @@ fn fmt_tokens(n: u64) -> String {
     }
 }
 
-fn top_model(tokens: &TokenStats) -> String {
-    tokens
-        .by_model
-        .first()
-        .map(|(m, _)| m.clone())
-        .unwrap_or_else(|| "—".into())
+fn footer_text(snap: &UsageSnapshot) -> String {
+    let mut parts = vec![format!(
+        "today {}",
+        fmt_tokens(snap.tokens.today_total_output)
+    )];
+    if let Some(rate) = snap.tokens.live_tok_per_min {
+        parts.push(format!("live {}/m", fmt_tokens(rate.round() as u64)));
+    }
+    if let Some(opus) = &snap.seven_day_opus {
+        parts.push(format!("opus {:.0}%", opus.used_pct));
+    }
+    parts.join(" · ")
+}
+
+fn details_panel(snap: &UsageSnapshot, now: SystemTime, muted: Hsla) -> impl IntoElement {
+    let mut panel = v_flex()
+        .gap_1()
+        .pt_1()
+        .child(div().h(px(1.0)).bg(rgba(0x56607055)))
+        .child(projects_section(&snap.tokens.top_projects, muted));
+
+    if has_activity(&snap.tokens.activity_heatmap) {
+        panel = panel.child(activity_grid(&snap.tokens.activity_heatmap, muted));
+    }
+
+    if let Some(opus) = &snap.seven_day_opus {
+        panel = panel.child(detail_text_row(
+            "opus",
+            format!("{:.0}% · {}", opus.used_pct, fmt_reset(opus.resets_at, now)),
+            muted,
+        ));
+    }
+
+    panel
+}
+
+fn detail_text_row(label: &'static str, value: String, muted: Hsla) -> impl IntoElement {
+    h_flex()
+        .items_center()
+        .gap_2()
+        .child(div().w(px(48.0)).text_xs().text_color(muted).child(label))
+        .child(div().flex_1().text_xs().child(value))
+}
+
+fn has_activity(grid: &[[u8; 7]]) -> bool {
+    grid.iter().any(|week| week.iter().any(|&c| c > 0))
+}
+
+/// GitHub-contributions-style grid: weeks are columns, Sun..Sat are rows.
+fn activity_grid(grid: &[[u8; 7]], muted: Hsla) -> impl IntoElement {
+    let mut cols = h_flex().items_start().gap_0p5();
+    for week in grid {
+        let mut col = v_flex().gap_0p5();
+        for &lvl in week.iter() {
+            col = col.child(
+                div()
+                    .w(px(8.0))
+                    .h(px(8.0))
+                    .rounded_sm()
+                    .bg(theme::heatmap_color(lvl)),
+            );
+        }
+        cols = cols.child(col);
+    }
+
+    h_flex()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .w(px(48.0))
+                .text_xs()
+                .text_color(muted)
+                .child("activity"),
+        )
+        .child(cols)
+}
+
+/// Top projects today as a small aligned list: `name … tokens`, one per line.
+fn projects_section(projects: &[(String, u64)], muted: Hsla) -> impl IntoElement {
+    let mut list = v_flex().flex_1().gap_0p5();
+    if projects.is_empty() {
+        list = list.child(div().text_xs().text_color(muted).child("no activity today"));
+    } else {
+        for (slug, tokens) in projects.iter().take(3) {
+            list = list.child(
+                h_flex()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_xs()
+                            .truncate()
+                            .child(project_label(slug)),
+                    )
+                    .child(div().text_xs().text_color(muted).child(fmt_tokens(*tokens))),
+            );
+        }
+    }
+
+    h_flex()
+        .items_start()
+        .gap_2()
+        .child(
+            div()
+                .w(px(48.0))
+                .text_xs()
+                .text_color(muted)
+                .child("projects"),
+        )
+        .child(list)
+}
+
+/// Turn a Claude project slug (the cwd with separators replaced by `-`, e.g.
+/// `C--Users-oz-Desktop-claude-usage`) into something readable by stripping the
+/// home-directory prefix, leaving the path under home (e.g. `Desktop-claude-usage`).
+fn project_label(slug: &str) -> String {
+    let home = home_slug();
+    let rest = (!home.is_empty())
+        .then(|| slug.strip_prefix(&home))
+        .flatten()
+        .map(|r| r.trim_start_matches('-'))
+        .filter(|r| !r.is_empty())
+        .unwrap_or(slug);
+    short_tail(rest, 24)
+}
+
+/// `C:\Users\oz` → `C--Users-oz`, matching Claude's slug encoding.
+fn home_slug() -> String {
+    std::env::var("USERPROFILE")
+        .unwrap_or_default()
+        .replace([':', '\\', '/'], "-")
+}
+
+/// Truncate keeping the END (the deepest, most identifying path component).
+fn short_tail(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        return s.to_string();
+    }
+    let tail: String = s.chars().skip(n + 1 - max).collect();
+    format!("…{tail}")
+}
+
+fn source_label(snap: &UsageSnapshot, now: SystemTime) -> String {
+    match &snap.source {
+        Provenance::StatusLine => snap
+            .diagnostics
+            .statusline_age_secs
+            .map(|age| format!("live {}", fmt_duration(age)))
+            .unwrap_or_else(|| "live".into()),
+        Provenance::OAuth => "oauth".into(),
+        Provenance::Stale { last_good_at } => {
+            if snap.diagnostics.last_quota_success.is_some() {
+                format!("stale {}", fmt_age(*last_good_at, now))
+            } else {
+                "stale".into()
+            }
+        }
+    }
+}
+
+fn diagnostic_text(snap: &UsageSnapshot, now: SystemTime) -> Option<String> {
+    let mut parts = Vec::new();
+    if matches!(snap.source, Provenance::Stale { .. }) {
+        if let Some(source) = snap.diagnostics.last_quota_success {
+            parts.push(format!("last {}", live_source_label(source)));
+        }
+        if let Some(age) = snap.diagnostics.statusline_age_secs {
+            parts.push(format!("cache {}", fmt_duration(age)));
+        }
+    }
+    if snap.diagnostics.oauth_error.is_some() {
+        parts.push("oauth issue".into());
+    }
+    if snap.diagnostics.jsonl_error.is_some() {
+        parts.push("jsonl issue".into());
+    }
+    if let Provenance::Stale { last_good_at } = snap.source
+        && snap.diagnostics.last_quota_success.is_some()
+    {
+        parts.push(format!("reading {}", fmt_age(last_good_at, now)));
+    }
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+fn live_source_label(source: LiveSource) -> &'static str {
+    match source {
+        LiveSource::StatusLine => "live",
+        LiveSource::OAuth => "oauth",
+    }
+}
+
+fn fmt_duration(secs: u64) -> String {
+    if secs >= 3600 {
+        format!("{}h", secs / 3600)
+    } else if secs >= 60 {
+        format!("{}m", secs / 60)
+    } else {
+        format!("{secs}s")
+    }
+}
+
+fn fmt_age(t: SystemTime, now: SystemTime) -> String {
+    now.duration_since(t)
+        .map(|d| format!("{} ago", fmt_duration(d.as_secs())))
+        .unwrap_or_else(|_| "now".into())
 }
 
 fn fmt_reset(resets_at: Option<SystemTime>, now: SystemTime) -> String {

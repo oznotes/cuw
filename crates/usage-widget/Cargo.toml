@@ -5,8 +5,10 @@
 #   * CMake on PATH (gpui builds native deps with it; bundled with VS 2022)
 #   * MSVC "Desktop development with C++"
 #
-# The gpui git deps are pinned to exact revs below (and in Cargo.lock) for
-# reproducible builds. Bump them deliberately, never via `cargo update`.
+# The gpui git deps intentionally omit `rev`: gpui-component depends on the
+# same Zed repo without `rev`, and Cargo treats `zed#sha` and `zed?rev=sha#sha`
+# as distinct sources. Reproducibility comes from the committed Cargo.lock; use
+# `--locked` in checks/builds and bump deliberately, never via `cargo update`.
 
 [package]
 name = "claude-usage-widget"
@@ -22,16 +24,16 @@ usage-core = { path = "../usage-core", features = ["net"] }
 anyhow = "1"
 smol = "2"
 
-# Pinned to exact revs for reproducible builds (also locked in Cargo.lock).
-gpui = { git = "https://github.com/zed-industries/zed", rev = "f99fe5d8c2a0bc40375d79bfc09dfa583f421797" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "f99fe5d8c2a0bc40375d79bfc09dfa583f421797", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "06be7113c715bdeba17cb278fefd1175eb1781e2" }
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component" }
 
 raw-window-handle = "0.6"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_SystemInformation",
+    "Wdk_System_SystemServices",
 ] }
 
 [build-dependencies]

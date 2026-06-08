@@ -18,5 +18,16 @@ pub fn level_color(level: Level) -> Hsla {
 /// A faint dark scrim drawn behind text so the numbers stay readable over a
 /// translucent Mica background (design spec §7.3).
 pub fn scrim() -> Hsla {
-    hsla(0.0, 0.0, 0.0, 0.35)
+    hsla(225.0 / 360.0, 0.19, 0.13, 0.80)
+}
+
+/// Compact activity-cell palette for the details strip.
+pub fn heatmap_color(level: u8) -> Hsla {
+    match level {
+        0 => hsla(225.0 / 360.0, 0.12, 0.25, 0.55),
+        1 => hsla(152.0 / 360.0, 0.35, 0.30, 1.0),
+        2 => hsla(150.0 / 360.0, 0.45, 0.38, 1.0),
+        3 => hsla(148.0 / 360.0, 0.55, 0.46, 1.0),
+        _ => hsla(145.0 / 360.0, 0.65, 0.54, 1.0),
+    }
 }
