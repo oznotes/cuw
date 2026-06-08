@@ -11,5 +11,6 @@
 //! - [`collector`]  — orchestrates sources into one `UsageSnapshot` per tick.
 //! - [`statusline_cmd`] — the `--statusline` helper logic.
 
+pub mod config;
 pub mod model;
 pub mod timeutil;
