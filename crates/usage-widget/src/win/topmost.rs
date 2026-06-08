@@ -1,27 +1,39 @@
-//! Force the borderless widget above other windows.
-//!
-//! gpui does NOT implement always-on-top on Windows (`WindowKind::PopUp` only
-//! sets `WS_EX_TOOLWINDOW`, never `HWND_TOPMOST`). So we grab the raw `HWND`
-//! (via `raw-window-handle` from the gpui window) and set topmost ourselves.
-//!
-//! M0 (highest project risk): confirm this holds above other windows and the
-//! exact `windows` 0.58 `SetWindowPos` signature (the second arg may be `HWND`
-//! rather than `Option<HWND>` depending on the crate version).
+//! Always-on-top. gpui does NOT implement this on Windows, so we read the raw
+//! `HWND` from the gpui window (it impls `raw_window_handle::HasWindowHandle`)
+//! and set `HWND_TOPMOST` via `SetWindowPos`.
 
-/// Pin the window identified by `hwnd` (a raw Win32 handle as `isize`) topmost.
+/// Pin a gpui window above other windows.
 #[cfg(target_os = "windows")]
-pub fn apply_topmost(hwnd: isize) {
+pub fn pin(window: &gpui::Window) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    // NB: gpui::Window has an *inherent* `window_handle()` returning a gpui
+    // `AnyWindowHandle`, which shadows the trait method — so call the
+    // raw-window-handle trait via UFCS to get the real OS handle.
+    if let Ok(handle) = HasWindowHandle::window_handle(window) {
+        if let RawWindowHandle::Win32(w) = handle.as_raw() {
+            apply_topmost(w.hwnd.get());
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn pin(_window: &gpui::Window) {}
+
+/// Set `HWND_TOPMOST` on a raw Win32 handle (`isize`).
+#[cfg(target_os = "windows")]
+fn apply_topmost(hwnd: isize) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     };
 
     let hwnd = HWND(hwnd as *mut core::ffi::c_void);
-    // SAFETY: hwnd comes from the live gpui window's raw-window-handle.
+    // SAFETY: hwnd is the live gpui window's handle.
     unsafe {
         let _ = SetWindowPos(
             hwnd,
-            Some(HWND_TOPMOST),
+            HWND_TOPMOST,
             0,
             0,
             0,
@@ -30,6 +42,3 @@ pub fn apply_topmost(hwnd: isize) {
         );
     }
 }
-
-#[cfg(not(target_os = "windows"))]
-pub fn apply_topmost(_hwnd: isize) {}

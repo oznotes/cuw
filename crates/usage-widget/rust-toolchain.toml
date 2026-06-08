@@ -1,5 +1,7 @@
-# Pin the toolchain for the GUI crate to match Zed/gpui. Scoped to this crate
-# directory so the pure `usage-core` crate keeps using the default stable.
+# Pin the toolchain for the GUI crate. Scoped to this crate directory so the
+# pure `usage-core` crate keeps using the default stable. 1.96.0 is the latest
+# stable (>= Zed's 1.95.0 floor) and the safest match for building current
+# gpui `main`.
 [toolchain]
-channel = "1.95.0"
+channel = "1.96.0"
 profile = "minimal"

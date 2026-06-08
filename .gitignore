@@ -1,3 +1,5 @@
 /target
 **/*.rs.bk
 *.pdb
+widget-shot*.png
+widget-st*.log
