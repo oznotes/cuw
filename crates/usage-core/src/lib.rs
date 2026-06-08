@@ -15,5 +15,6 @@ pub mod collector;
 pub mod config;
 pub mod model;
 pub mod sources;
+pub mod stats_cache;
 pub mod statusline_cmd;
 pub mod timeutil;
