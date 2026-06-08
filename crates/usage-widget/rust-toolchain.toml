@@ -1,0 +1,5 @@
+# Pin the toolchain for the GUI crate to match Zed/gpui. Scoped to this crate
+# directory so the pure `usage-core` crate keeps using the default stable.
+[toolchain]
+channel = "1.95.0"
+profile = "minimal"
