@@ -151,7 +151,9 @@ impl Render for Widget {
         let fg = cx.theme().foreground;
 
         // Dark, semi-transparent panel: legible over the Mica frosted backdrop.
-        // The whole panel is a drag handle (borderless window has no title bar).
+        // Mark the whole panel as the window's drag region: on Windows the
+        // backend's WM_NCHITTEST returns HTCAPTION here, so the OS drags it
+        // natively (borderless window has no real title bar to grab).
         let root = v_flex()
             .size_full()
             .gap_2()
@@ -159,9 +161,7 @@ impl Render for Widget {
             .rounded_xl()
             .bg(rgba(0x1a1d26cc))
             .text_color(fg)
-            .on_mouse_down(MouseButton::Left, |_, window, _cx| {
-                window.start_window_move();
-            });
+            .window_control_area(WindowControlArea::Drag);
 
         let Some(snap) = snap else {
             return root.child(div().text_sm().text_color(muted).child("Loading usage…"));
