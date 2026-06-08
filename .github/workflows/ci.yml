@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust components
+        run: rustup component add rustfmt --toolchain 1.96.0
+
+      - name: Check formatting
+        run: |
+          cargo fmt --manifest-path crates\usage-core\Cargo.toml -- --check
+          cargo fmt --manifest-path crates\usage-widget\Cargo.toml -- --check
+
+      - name: Test core
+        run: |
+          cargo test --manifest-path crates\usage-core\Cargo.toml
+          cargo test --manifest-path crates\usage-core\Cargo.toml --features net
+
+      - name: Check widget
+        run: cargo check --locked --manifest-path crates\usage-widget\Cargo.toml
