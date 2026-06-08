@@ -1,0 +1,22 @@
+[package]
+name = "usage-core"
+version = "0.1.0"
+edition = "2024"
+description = "Pure data + logic core for the Claude usage widget (no GUI). Reads quota + JSONL token usage and produces UsageSnapshots."
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+dirs = "5"
+ureq = { version = "2", features = ["json"], optional = true }
+
+[features]
+default = []
+# Network access (the live OAuth usage fetch). Off by default so the core
+# builds + tests with no TLS/native deps; the widget enables it.
+net = ["dep:ureq"]
+
+[dev-dependencies]
+tempfile = "3"
