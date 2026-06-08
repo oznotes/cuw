@@ -125,13 +125,51 @@ fn default_oauth_fetch() -> OauthFetch {
 fn default_oauth_fetch() -> OauthFetch {
     Box::new(|now| {
         let token = read_access_token()?;
-        let version =
-            std::env::var("CLAUDE_CODE_VERSION").unwrap_or_else(|_| "2.1.0".to_string());
+        let version = detect_cc_version();
         crate::sources::oauth::fetch(&token, &version).ok().map(|mut r| {
             r.observed_at = now;
             r
         })
     })
+}
+
+/// Best-effort Claude Code version for the mandatory OAuth `User-Agent`.
+/// Env override wins; otherwise read the newest `~/.claude/sessions/*.json`
+/// `version` field; otherwise a recent fallback.
+#[cfg(feature = "net")]
+fn detect_cc_version() -> String {
+    if let Ok(v) = std::env::var("CLAUDE_CODE_VERSION") {
+        return v;
+    }
+    if let Some(home) = dirs::home_dir() {
+        let dir = home.join(".claude").join("sessions");
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            let mut best: Option<(std::time::SystemTime, String)> = None;
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().and_then(|x| x.to_str()) != Some("json") {
+                    continue;
+                }
+                let mtime = e
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::UNIX_EPOCH);
+                if let Ok(s) = std::fs::read_to_string(&p) {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+                        if let Some(ver) = v.get("version").and_then(|x| x.as_str()) {
+                            if best.as_ref().map_or(true, |(t, _)| mtime > *t) {
+                                best = Some((mtime, ver.to_string()));
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((_, v)) = best {
+                return v;
+            }
+        }
+    }
+    "2.1.0".to_string()
 }
 
 /// Read `claudeAiOauth.accessToken` from `~/.claude/.credentials.json`.

@@ -6,6 +6,10 @@
 //!   the separate `claude-usage-statusline`. Pure `usage-core`, no gpui.
 //! - default        : launch the always-on-top frosted-glass widget.
 
+// Release builds are a GUI app: no console window. Debug keeps the console so
+// panics/logs are visible during development.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod ui;
 mod win;
 
