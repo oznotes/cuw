@@ -1,0 +1,11 @@
+# Throwaway tool: rasterize the widget SVG into a multi-size .ico.
+# Pure Rust (resvg + ico) — no system deps, builds on the default stable toolchain.
+[package]
+name = "icongen"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+resvg = "0.44"
+ico = "0.3"
