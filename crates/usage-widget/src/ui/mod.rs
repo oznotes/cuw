@@ -31,10 +31,7 @@ use crate::win;
 
 mod theme;
 
-actions!(
-    claude_usage_widget,
-    [Quit, RefreshNow, ToggleDetails, ToggleAutostart]
-);
+actions!(claude_usage_widget, [Quit, RefreshNow, ToggleAutostart]);
 
 type Shared = Arc<Mutex<Option<UsageSnapshot>>>;
 
@@ -78,6 +75,11 @@ pub fn run(config: Config) -> Result<()> {
         cx.on_action({
             let refresh = refresh.clone();
             move |_: &RefreshNow, _cx: &mut App| refresh.store(true, Ordering::SeqCst)
+        });
+        // Stateless registry flip, handled at the App level: a context-menu's
+        // action dispatch reaches App handlers but NOT view-level ones.
+        cx.on_action(|_: &ToggleAutostart, _cx: &mut App| {
+            let _ = win::autostart::set(!win::autostart::is_enabled());
         });
         cx.bind_keys([KeyBinding::new("alt-f4", Quit, None)]);
 
@@ -127,7 +129,6 @@ struct Widget {
     config: Config,
     last_saved_pos: Option<(f32, f32)>,
     show_details: bool,
-    autostart_enabled: bool,
 }
 
 impl Widget {
@@ -148,7 +149,6 @@ impl Widget {
             config,
             last_saved_pos: None,
             show_details: false,
-            autostart_enabled: win::autostart::is_enabled(),
         }
     }
 
@@ -201,23 +201,6 @@ impl Widget {
                     ),
             )
             .child(div().text_xs().child(fmt_reset(w.resets_at, now)))
-    }
-
-    fn toggle_details(&mut self, _: &ToggleDetails, window: &mut Window, cx: &mut Context<Self>) {
-        self.flip_details(window, cx);
-    }
-
-    fn toggle_autostart(
-        &mut self,
-        _: &ToggleAutostart,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.autostart_enabled = !self.autostart_enabled;
-        if win::autostart::set(self.autostart_enabled).is_err() {
-            self.autostart_enabled = !self.autostart_enabled; // revert if it failed
-        }
-        cx.notify();
     }
 
     fn flip_details(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -292,17 +275,19 @@ impl Render for Widget {
 
         // Right-click anywhere on the body for the menu (drag header excepted,
         // where Windows shows its own system menu).
-        let show_details = self.show_details;
-        let autostart_on = self.autostart_enabled;
-        root.on_action(cx.listener(Self::toggle_details))
-            .on_action(cx.listener(Self::toggle_autostart))
-            .context_menu(move |menu, _window, _cx| {
-                menu.menu("Refresh now", Box::new(RefreshNow))
-                    .menu_with_check("Details", show_details, Box::new(ToggleDetails))
-                    .menu_with_check("Start on login", autostart_on, Box::new(ToggleAutostart))
-                    .separator()
-                    .menu("Quit", Box::new(Quit))
-            })
+        // Read the live registry state and use a state-reflecting label, so it's
+        // unambiguous what clicking does (the menu_with_check tick is too subtle).
+        let autostart_label = if win::autostart::is_enabled() {
+            "Disable start-on-login"
+        } else {
+            "Enable start-on-login"
+        };
+        root.context_menu(move |menu, _window, _cx| {
+            menu.menu("Refresh now", Box::new(RefreshNow))
+                .menu(autostart_label, Box::new(ToggleAutostart))
+                .separator()
+                .menu("Quit", Box::new(Quit))
+        })
     }
 }
 
