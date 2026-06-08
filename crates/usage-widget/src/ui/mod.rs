@@ -1,16 +1,21 @@
 //! gpui shell: a borderless, frosted-glass, always-on-top window that renders
 //! the latest `UsageSnapshot`. Written against the real gpui / gpui-component
-//! API (see examples/hello_world + system_monitor in the pinned checkout).
+//! API (examples/hello_world + system_monitor + menu_story in the checkout).
 //!
 //! Threading: the `Collector` runs on its own OS thread (blocking file/network
 //! IO stays off the UI thread) and publishes snapshots into a shared slot; the
 //! view repaints ~1 Hz so countdowns tick and new snapshots appear promptly.
+//!
+//! Interaction: drag by the header (Windows native HTCAPTION), right-click the
+//! body for a menu (Refresh / Quit), Alt+F4 to quit. Position is persisted.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
 use gpui::*;
+use gpui_component::menu::ContextMenuExt;
 use gpui_component::{ActiveTheme as _, Root, Theme, ThemeMode, h_flex, progress::Progress, v_flex};
 
 use usage_core::collector::Collector;
@@ -21,27 +26,37 @@ use crate::win;
 
 mod theme;
 
+actions!(claude_usage_widget, [Quit, RefreshNow]);
+
 type Shared = Arc<Mutex<Option<UsageSnapshot>>>;
 
 /// Launch the widget. Blocks until the application quits.
 pub fn run(config: Config) -> Result<()> {
     let shared: Shared = Arc::new(Mutex::new(None));
+    let refresh: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
     // Collector on a dedicated OS thread — blocking IO off the UI thread.
+    // Ticks every `refresh_secs`, or immediately when the refresh flag is set.
     {
         let shared = shared.clone();
         let cfg = config.clone();
+        let refresh = refresh.clone();
         std::thread::Builder::new()
             .name("usage-collector".into())
             .spawn(move || {
                 let mut collector = Collector::new(cfg.clone());
                 let period = Duration::from_secs(cfg.refresh_secs.max(1));
+                let mut last: Option<Instant> = None;
                 loop {
-                    let snap = collector.tick(SystemTime::now());
-                    if let Ok(mut g) = shared.lock() {
-                        *g = Some(snap);
+                    let due = last.map_or(true, |t| t.elapsed() >= period);
+                    if due || refresh.swap(false, Ordering::SeqCst) {
+                        let snap = collector.tick(SystemTime::now());
+                        if let Ok(mut g) = shared.lock() {
+                            *g = Some(snap);
+                        }
+                        last = Some(Instant::now());
                     }
-                    std::thread::sleep(period);
+                    std::thread::sleep(Duration::from_millis(400));
                 }
             })
             .ok();
@@ -49,14 +64,21 @@ pub fn run(config: Config) -> Result<()> {
 
     gpui_platform::application().run(move |cx: &mut App| {
         gpui_component::init(cx);
+
+        // Actions: Quit closes the app; RefreshNow pokes the collector thread.
+        cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
+        cx.on_action({
+            let refresh = refresh.clone();
+            move |_: &RefreshNow, _cx: &mut App| refresh.store(true, Ordering::SeqCst)
+        });
+        cx.bind_keys([KeyBinding::new("alt-f4", Quit, None)]);
+
         let shared = shared.clone();
         let config = config.clone();
         cx.spawn(async move |cx| {
             let opts = window_options(&config);
             cx.open_window(opts, |window, cx| {
-                // gpui has no always-on-top on Windows; pin it ourselves.
                 win::topmost::pin(window);
-                // Dark theme so light text sits well on the frosted-glass panel.
                 Theme::change(ThemeMode::Dark, Some(window), cx);
                 let view = cx.new(|cx| Widget::new(shared.clone(), config.clone(), cx));
                 cx.new(|cx| Root::new(view, window, cx))
@@ -75,7 +97,7 @@ fn window_options(config: &Config) -> WindowOptions {
         .map(|(x, y)| point(px(x), px(y)))
         .unwrap_or_else(|| point(px(48.0), px(48.0)));
     WindowOptions {
-        titlebar: None, // borderless
+        titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin,
             size: size(px(300.0), px(168.0)),
@@ -91,6 +113,7 @@ fn window_options(config: &Config) -> WindowOptions {
 struct Widget {
     shared: Shared,
     config: Config,
+    last_saved_pos: Option<(f32, f32)>,
 }
 
 impl Widget {
@@ -100,17 +123,31 @@ impl Widget {
             loop {
                 smol::Timer::after(Duration::from_secs(1)).await;
                 if this.update(cx, |_this, cx| cx.notify()).is_err() {
-                    break; // view dropped
+                    break;
                 }
             }
         })
         .detach();
 
-        Widget { shared, config }
+        Widget { shared, config, last_saved_pos: None }
     }
 
     fn level(&self, used_pct: f32) -> Level {
         Level::from_pct(used_pct, self.config.warn_threshold, self.config.critical_threshold)
+    }
+
+    /// Persist the window position when it changes (after a drag settles).
+    fn save_position_if_moved(&mut self, window: &Window) {
+        let o = window.bounds().origin;
+        let pos = (f32::from(o.x), f32::from(o.y));
+        let moved = self
+            .last_saved_pos
+            .map_or(true, |p| (p.0 - pos.0).abs() > 1.0 || (p.1 - pos.1).abs() > 1.0);
+        if moved {
+            self.last_saved_pos = Some(pos);
+            self.config.position = Some(pos);
+            let _ = self.config.save();
+        }
     }
 
     fn window_row(&self, label: &str, w: &UWindow, now: SystemTime) -> impl IntoElement {
@@ -144,50 +181,59 @@ impl Widget {
 }
 
 impl Render for Widget {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.save_position_if_moved(window);
+
         let snap = self.shared.lock().ok().and_then(|g| g.clone());
         let now = SystemTime::now();
         let muted = cx.theme().muted_foreground;
         let fg = cx.theme().foreground;
 
         // Dark, semi-transparent panel: legible over the Mica frosted backdrop.
-        // Mark the whole panel as the window's drag region: on Windows the
-        // backend's WM_NCHITTEST returns HTCAPTION here, so the OS drags it
-        // natively (borderless window has no real title bar to grab).
         let root = v_flex()
+            .id("widget-root")
             .size_full()
             .gap_2()
             .p_3()
             .rounded_xl()
             .bg(rgba(0x1a1d26cc))
-            .text_color(fg)
-            .window_control_area(WindowControlArea::Drag);
+            .text_color(fg);
 
-        let Some(snap) = snap else {
-            return root.child(div().text_sm().text_color(muted).child("Loading usage…"));
+        let root = match snap {
+            None => root.child(div().text_sm().text_color(muted).child("Loading usage…")),
+            Some(snap) => {
+                let prov = match &snap.source {
+                    Provenance::StatusLine => "live",
+                    Provenance::OAuth => "oauth",
+                    Provenance::Stale { .. } => "stale",
+                };
+                let footer = format!(
+                    "today {} · {}",
+                    fmt_tokens(snap.tokens.today_total_output),
+                    top_model(&snap.tokens)
+                );
+                // Header is the drag handle (native HTCAPTION on Windows).
+                let header = h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(div().text_sm().child("Claude · Max 5×"))
+                    .child(div().text_xs().text_color(muted).child(prov))
+                    .window_control_area(WindowControlArea::Drag);
+
+                root.child(header)
+                    .child(self.window_row("5H", &snap.five_hour, now))
+                    .child(self.window_row("7D", &snap.seven_day, now))
+                    .child(div().text_xs().text_color(muted).child(footer))
+            }
         };
 
-        let prov = match &snap.source {
-            Provenance::StatusLine => "live",
-            Provenance::OAuth => "oauth",
-            Provenance::Stale { .. } => "stale",
-        };
-        let footer = format!(
-            "today {} · {}",
-            fmt_tokens(snap.tokens.today_total_output),
-            top_model(&snap.tokens)
-        );
-
-        root.child(
-            h_flex()
-                .justify_between()
-                .items_center()
-                .child(div().text_sm().child("Claude · Max 5×"))
-                .child(div().text_xs().text_color(muted).child(prov)),
-        )
-        .child(self.window_row("5H", &snap.five_hour, now))
-        .child(self.window_row("7D", &snap.seven_day, now))
-        .child(div().text_xs().text_color(muted).child(footer))
+        // Right-click anywhere on the body for the menu (drag header excepted,
+        // where Windows shows its own system menu).
+        root.context_menu(|menu, _window, _cx| {
+            menu.menu("Refresh now", Box::new(RefreshNow))
+                .separator()
+                .menu("Quit", Box::new(Quit))
+        })
     }
 }
 
