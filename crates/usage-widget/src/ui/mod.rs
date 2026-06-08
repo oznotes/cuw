@@ -16,19 +16,25 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::Result;
 use gpui::*;
 use gpui_component::menu::ContextMenuExt;
+use gpui_component::tooltip::Tooltip;
 use gpui_component::{
     ActiveTheme as _, Root, Theme, ThemeMode, h_flex, progress::Progress, v_flex,
 };
 
 use usage_core::collector::Collector;
 use usage_core::config::Config;
-use usage_core::model::{Level, LiveSource, Provenance, UsageSnapshot, Window as UWindow};
+use usage_core::model::{
+    HeatCell, Level, LiveSource, Provenance, UsageSnapshot, Window as UWindow,
+};
 
 use crate::win;
 
 mod theme;
 
-actions!(claude_usage_widget, [Quit, RefreshNow, ToggleDetails]);
+actions!(
+    claude_usage_widget,
+    [Quit, RefreshNow, ToggleDetails, ToggleAutostart]
+);
 
 type Shared = Arc<Mutex<Option<UsageSnapshot>>>;
 
@@ -121,6 +127,7 @@ struct Widget {
     config: Config,
     last_saved_pos: Option<(f32, f32)>,
     show_details: bool,
+    autostart_enabled: bool,
 }
 
 impl Widget {
@@ -141,6 +148,7 @@ impl Widget {
             config,
             last_saved_pos: None,
             show_details: false,
+            autostart_enabled: win::autostart::is_enabled(),
         }
     }
 
@@ -197,6 +205,19 @@ impl Widget {
 
     fn toggle_details(&mut self, _: &ToggleDetails, window: &mut Window, cx: &mut Context<Self>) {
         self.flip_details(window, cx);
+    }
+
+    fn toggle_autostart(
+        &mut self,
+        _: &ToggleAutostart,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.autostart_enabled = !self.autostart_enabled;
+        if win::autostart::set(self.autostart_enabled).is_err() {
+            self.autostart_enabled = !self.autostart_enabled; // revert if it failed
+        }
+        cx.notify();
     }
 
     fn flip_details(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -272,10 +293,13 @@ impl Render for Widget {
         // Right-click anywhere on the body for the menu (drag header excepted,
         // where Windows shows its own system menu).
         let show_details = self.show_details;
+        let autostart_on = self.autostart_enabled;
         root.on_action(cx.listener(Self::toggle_details))
+            .on_action(cx.listener(Self::toggle_autostart))
             .context_menu(move |menu, _window, _cx| {
                 menu.menu("Refresh now", Box::new(RefreshNow))
                     .menu_with_check("Details", show_details, Box::new(ToggleDetails))
+                    .menu_with_check("Start on login", autostart_on, Box::new(ToggleAutostart))
                     .separator()
                     .menu("Quit", Box::new(Quit))
             })
@@ -336,23 +360,32 @@ fn detail_text_row(label: &'static str, value: String, muted: Hsla) -> impl Into
         .child(div().flex_1().text_xs().child(value))
 }
 
-fn has_activity(grid: &[[u8; 7]]) -> bool {
-    grid.iter().any(|week| week.iter().any(|&c| c > 0))
+fn has_activity(grid: &[[HeatCell; 7]]) -> bool {
+    grid.iter().any(|week| week.iter().any(|c| c.level > 0))
 }
 
 /// GitHub-contributions-style grid: weeks are columns, Sun..Sat are rows.
-fn activity_grid(grid: &[[u8; 7]], muted: Hsla) -> impl IntoElement {
+/// Each cell shows its date + token count on hover.
+fn activity_grid(grid: &[[HeatCell; 7]], muted: Hsla) -> impl IntoElement {
     let mut cols = h_flex().items_start().gap_0p5();
-    for week in grid {
+    for (wi, week) in grid.iter().enumerate() {
         let mut col = v_flex().gap_0p5();
-        for &lvl in week.iter() {
-            col = col.child(
-                div()
-                    .w(px(8.0))
-                    .h(px(8.0))
-                    .rounded_sm()
-                    .bg(theme::heatmap_color(lvl)),
-            );
+        for (di, cell) in week.iter().enumerate() {
+            let mut dot = div()
+                .id(("heatcell", wi * 7 + di))
+                .w(px(9.0))
+                .h(px(9.0))
+                .rounded_sm()
+                .bg(theme::heatmap_color(cell.level));
+            if !cell.label.is_empty() {
+                let tip = if cell.tokens > 0 {
+                    format!("{} · {}", cell.label, fmt_tokens(cell.tokens))
+                } else {
+                    format!("{} · no activity", cell.label)
+                };
+                dot = dot.tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx));
+            }
+            col = col.child(dot);
         }
         cols = cols.child(col);
     }

@@ -6,15 +6,26 @@
 //! - [`Cursor`] — incremental reader that only consumes newly appended bytes,
 //!   so a refresh touches kilobytes, never the whole ~107 MB history.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 
-use crate::model::TokenStats;
+use crate::model::{HeatCell, TokenStats};
 use crate::timeutil::{iso8601_to_systemtime, utc_day};
+
+/// Format a UTC day-index (days since the Unix epoch) as a short label like `Jun 3`.
+fn day_label(day_index: i64) -> String {
+    use chrono::Datelike;
+    chrono::DateTime::from_timestamp(day_index * 86_400, 0)
+        .map(|dt| {
+            let d = dt.date_naive();
+            format!("{} {}", d.format("%b"), d.day())
+        })
+        .unwrap_or_default()
+}
 
 /// Output tokens within this window of `now` feed the "live tok/min" figure.
 const LIVE_WINDOW: Duration = Duration::from_secs(90);
@@ -83,7 +94,9 @@ pub fn parse_line(line: &str, project: &str) -> Result<Option<AssistantRecord>> 
 
 /// Accumulates deduped assistant records into today's (UTC) totals + a live rate.
 pub struct TokenLedger {
-    seen: HashSet<(String, String)>,
+    /// (message_id, request_id) -> highest `output_tokens` already counted, so a
+    /// streamed request's rising rows are counted by increment (final row wins).
+    seen: HashMap<(String, String), u64>,
     /// UTC-day index the `today` maps belong to (`i64::MIN` until first ingest).
     day: i64,
     by_model_today: HashMap<String, u64>,
@@ -103,7 +116,7 @@ impl Default for TokenLedger {
 impl TokenLedger {
     pub fn new() -> Self {
         TokenLedger {
-            seen: HashSet::new(),
+            seen: HashMap::new(),
             day: i64::MIN,
             by_model_today: HashMap::new(),
             by_project_today: HashMap::new(),
@@ -127,22 +140,31 @@ impl TokenLedger {
     pub fn ingest(&mut self, rec: &AssistantRecord, now: SystemTime) {
         self.roll_to(now);
 
-        if !(rec.message_id.is_empty() && rec.request_id.is_empty()) {
+        // Streaming writes several rows per (message_id, request_id) with rising
+        // output_tokens. Count only the INCREMENT since the last row for this
+        // request, so the final row's total wins and identical duplicates add 0
+        // (and partial streams aren't undercounted by keeping only the first row).
+        let amount = if rec.message_id.is_empty() && rec.request_id.is_empty() {
+            rec.output_tokens // no ids -> cannot dedupe; count fully
+        } else {
             let key = (rec.message_id.clone(), rec.request_id.clone());
-            if !self.seen.insert(key) {
-                return; // duplicate streaming row — skip
+            let prev = self.seen.get(&key).copied().unwrap_or(0);
+            if rec.output_tokens <= prev {
+                return; // no new tokens since the last row for this request
             }
-        }
+            self.seen.insert(key, rec.output_tokens);
+            rec.output_tokens - prev
+        };
 
         // All-time per-day total (for the activity heatmap; survives day rolls).
-        *self.by_day.entry(utc_day(rec.timestamp)).or_default() += rec.output_tokens;
+        *self.by_day.entry(utc_day(rec.timestamp)).or_default() += amount;
 
         if utc_day(rec.timestamp) == self.day {
-            *self.by_model_today.entry(rec.model.clone()).or_default() += rec.output_tokens;
+            *self.by_model_today.entry(rec.model.clone()).or_default() += amount;
             *self
                 .by_project_today
                 .entry(rec.project.clone())
-                .or_default() += rec.output_tokens;
+                .or_default() += amount;
         }
 
         let recent_enough = now
@@ -150,7 +172,7 @@ impl TokenLedger {
             .map(|d| d <= RING_KEEP)
             .unwrap_or(true); // future timestamp => keep
         if recent_enough {
-            self.recent.push_back((rec.timestamp, rec.output_tokens));
+            self.recent.push_back((rec.timestamp, amount));
         }
         while let Some(&(ts, _)) = self.recent.front() {
             if now
@@ -222,7 +244,7 @@ impl TokenLedger {
     /// `max_weeks` columns, but **trims leading empty weeks** so the first
     /// column is the earliest active week — no blank left half. Each column is
     /// `[u8; 7]` of levels for Sunday..Saturday; the last column contains `now`.
-    pub fn activity_heatmap(&self, now: SystemTime, max_weeks: usize) -> Vec<[u8; 7]> {
+    pub fn activity_heatmap(&self, now: SystemTime, max_weeks: usize) -> Vec<[HeatCell; 7]> {
         let today = utc_day(now);
         let max_weeks = max_weeks.max(1) as i64;
         // 1970-01-01 (day index 0) was a Thursday; days-from-Sunday = (d + 4) mod 7.
@@ -241,14 +263,18 @@ impl TokenLedger {
 
         let mut grid = Vec::with_capacity(weeks);
         for w in 0..weeks {
-            let mut col = [0u8; 7];
-            for (d, cell) in col.iter_mut().enumerate() {
+            let col: [HeatCell; 7] = core::array::from_fn(|d| {
                 let idx = first_sunday + 7 * w as i64 + d as i64;
-                if idx <= today {
-                    *cell =
-                        crate::stats_cache::level_for(self.by_day.get(&idx).copied().unwrap_or(0));
+                if idx > today {
+                    return HeatCell::default(); // future day
                 }
-            }
+                let tokens = self.by_day.get(&idx).copied().unwrap_or(0);
+                HeatCell {
+                    level: crate::stats_cache::level_for(tokens),
+                    tokens,
+                    label: day_label(idx),
+                }
+            });
             grid.push(col);
         }
         grid
@@ -445,6 +471,20 @@ mod tests {
     }
 
     #[test]
+    fn ledger_streaming_rows_keep_final_total() {
+        // Rising output_tokens across rows of one request => count the final total
+        // (100 + 150 increment + 150 increment = 400), not the first row (100).
+        let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
+        let ts = iso8601_to_systemtime("2026-06-08T11:00:00Z").unwrap();
+        let mut led = TokenLedger::new();
+        led.ingest(&rec(ts, "m1", "r1", "opus", 100), now);
+        led.ingest(&rec(ts, "m1", "r1", "opus", 250), now);
+        led.ingest(&rec(ts, "m1", "r1", "opus", 400), now);
+        assert_eq!(led.stats(now).today_total_output, 400);
+        assert_eq!(led.stats(now).by_model, vec![("opus".into(), 400)]);
+    }
+
+    #[test]
     fn ledger_ignores_other_days() {
         let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
         let yest = iso8601_to_systemtime("2026-06-07T11:00:00Z").unwrap();
@@ -501,10 +541,12 @@ mod tests {
         // max 8 weeks, but data spans only 3 calendar weeks => trimmed to 3.
         let grid = led.activity_heatmap(now, 8);
         assert_eq!(grid.len(), 3);
-        assert_eq!(grid[2][1], 2); // today (Monday), last column
-        assert_eq!(grid[0][1], 1); // two-weeks-ago Monday, first column
-        assert_eq!(grid[1][1], 0); // the middle week had no activity
-        assert_eq!(grid[2][6], 0); // future (Saturday) stays 0
+        assert_eq!(grid[2][1].level, 2); // today (Monday), last column
+        assert_eq!(grid[0][1].level, 1); // two-weeks-ago Monday, first column
+        assert_eq!(grid[1][1].level, 0); // the middle week had no activity
+        assert_eq!(grid[2][6].level, 0); // future (Saturday) stays 0
+        assert_eq!(grid[2][1].tokens, 60_000); // carries the day's token count
+        assert!(grid[2][1].label.starts_with("Jun")); // and a date label
     }
 
     // ---- Cursor ----

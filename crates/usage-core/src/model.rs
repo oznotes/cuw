@@ -70,6 +70,15 @@ pub struct Diagnostics {
     pub oauth_error: Option<String>,
 }
 
+/// One day's cell in the activity heatmap: intensity level (0..=4), the day's
+/// output tokens, and a short label like `Jun 3` (empty for out-of-range days).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct HeatCell {
+    pub level: u8,
+    pub tokens: u64,
+    pub label: String,
+}
+
 /// Local token detail derived from the JSONL transcripts. Informational —
 /// the headline is the quota windows, not these counts.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -84,7 +93,7 @@ pub struct TokenStats {
     /// Top projects by output tokens today, sorted descending (popup-only).
     pub top_projects: Vec<(String, u64)>,
     /// Compact activity grid, oldest week to newest week, Sunday..Saturday.
-    pub activity_heatmap: Vec<[u8; 7]>,
+    pub activity_heatmap: Vec<[HeatCell; 7]>,
 }
 
 /// One immutable refresh of everything the widget shows.

@@ -15,11 +15,11 @@ Built in two crates so the data/logic core is testable on its own:
 
 | Piece | State |
 |---|---|
-| `usage-core` — model, timeutil, config, sources (oauth/statusline/jsonl), reconcile, diagnostics, collector, statusline helper | ✅ **done, 59 tests green** |
+| `usage-core` — model, timeutil, config, sources (oauth/statusline/jsonl), reconcile, diagnostics, collector, statusline helper | ✅ **done, 61 tests green** |
 | `cargo run --example snapshot` (reads your real `~/.claude` data) | ✅ **working** |
 | `claude-usage-statusline` bin (populates the quota cache) | ✅ **working** |
-| Live OAuth fetch (`--features net`) | ✅ **compiles**; not yet exercised against the live endpoint |
-| `usage-widget` GUI (window, bars, menu, topmost, Mica, icon) | ✅ **builds** with pinned `Cargo.lock` (`cargo check --locked`) |
+| Live OAuth fetch (`--features net`) | ✅ **working** (drives the live widget) |
+| `usage-widget` GUI — bars, Details (projects/heatmap/hover), menu (incl. start-on-login), topmost, Mica, icon, drag, persisted position | ✅ **builds, runs, releases** (~9.5 MB; pinned `Cargo.lock`, build with `--locked`) |
 
 The interesting core — getting the numbers right — is covered by tests. The GUI
 uses git-only gpui dependencies, so reproducible widget builds require the
@@ -100,13 +100,13 @@ claude-usage/
 ├─ README.md
 ├─ docs/superpowers/{specs,plans}/…
 └─ crates/
-   ├─ usage-core/                 # pure logic — 59 tests green
-   │  ├─ src/{model,timeutil,config,collector,statusline_cmd}.rs
+   ├─ usage-core/                 # pure logic — 61 tests green
+   │  ├─ src/{model,timeutil,config,collector,statusline_cmd,stats_cache}.rs
    │  ├─ src/sources/{mod,oauth,statusline,jsonl}.rs
    │  ├─ src/bin/statusline.rs    # the registerable helper
    │  └─ examples/snapshot.rs     # real-data demo
-   └─ usage-widget/               # gpui GUI shell — scaffolded, build-pending
+   └─ usage-widget/               # gpui GUI shell — builds, runs, releases (~9.5 MB)
       ├─ src/main.rs
       ├─ src/ui/{mod,theme}.rs
-      └─ src/win/{mod,topmost,backdrop}.rs
+      └─ src/win/{mod,topmost,backdrop,autostart}.rs
 ```
