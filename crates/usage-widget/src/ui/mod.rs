@@ -579,7 +579,7 @@ fn project_label(slug: &str) -> String {
     short_tail(rest, 24)
 }
 
-/// `C:\Users\oz` → `C--Users-oz`, matching Claude's slug encoding.
+/// Build the slug prefix for the current home directory, matching Claude's encoding.
 fn home_slug() -> String {
     std::env::var("USERPROFILE")
         .unwrap_or_default()

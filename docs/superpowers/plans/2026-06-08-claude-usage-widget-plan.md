@@ -205,7 +205,7 @@ strip = true
 
 ## File Structure
 
-One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
+One responsibility per module (under `<repo>\src\`):
 
 | File | Responsibility |
 |------|----------------|
@@ -242,12 +242,12 @@ One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
 ### Task M0-1: Repo skeleton, toolchain pin, and an empty crate that builds
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\rust-toolchain.toml`
-- Create: `C:\Users\oz\Desktop\claude-usage\.gitignore`
-- Create: `C:\Users\oz\Desktop\claude-usage\Cargo.toml`
-- Create: `C:\Users\oz\Desktop\claude-usage\src\main.rs`
+- Create: `<repo>\rust-toolchain.toml`
+- Create: `<repo>\.gitignore`
+- Create: `<repo>\Cargo.toml`
+- Create: `<repo>\src\main.rs`
 
-- [ ] **Step 1: Initialize the git repo.** From `C:\Users\oz\Desktop\claude-usage\`, run `git init`. (The working directory already exists and contains `docs/`; we add crate files alongside it.)
+- [ ] **Step 1: Initialize the git repo.** From `<repo>\`, run `git init`. (The working directory already exists and contains `docs/`; we add crate files alongside it.)
 
 - [ ] **Step 2: Pin the toolchain.** Create `rust-toolchain.toml`:
   ```toml
@@ -300,7 +300,7 @@ One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
 ### Task M0-2: Add and pin the gpui / gpui-component / windows dependency stack
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\Cargo.toml`
+- Modify: `<repo>\Cargo.toml`
 
 - [ ] **Step 1: Replace the dependency block with the authoritative Shared Contracts block.** Overwrite `Cargo.toml` with the verbatim dependency block from the **Shared Contracts** section above (this supersedes the empty `[dependencies]` from M0-1).
 
@@ -335,10 +335,10 @@ One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
 ### Task M0-3: `build.rs` + embedded `.exe` icon
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\build.rs`
-- Create: `C:\Users\oz\Desktop\claude-usage\assets\icon.ico`
-- Create: `C:\Users\oz\Desktop\claude-usage\app.rc`
-- Modify: `C:\Users\oz\Desktop\claude-usage\Cargo.toml` (already has `embed-resource` in `[build-dependencies]` from M0-2)
+- Create: `<repo>\build.rs`
+- Create: `<repo>\assets\icon.ico`
+- Create: `<repo>\app.rc`
+- Modify: `<repo>\Cargo.toml` (already has `embed-resource` in `[build-dependencies]` from M0-2)
 
 > Naming standard (used everywhere, incl. M6-4): the icon asset is `assets/icon.ico` and the resource script is `app.rc`.
 
@@ -378,7 +378,7 @@ One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
 ### Task M0-4: Borderless gpui-component window (Mica backdrop) with a hardcoded ProgressBar
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs`
+- Modify: `<repo>\src\main.rs`
 
 - [ ] **Step 1: Replace `main.rs` with a minimal gpui-component app.** Opens one borderless Mica window, runs `gpui_component::init(cx)`, wraps the root in `gpui_component::Root::new(...)`, renders a hardcoded `ProgressBar` at 72%. Overwrite `src\main.rs`:
   ```rust
@@ -447,9 +447,9 @@ One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
 ### Task M0-5: Force the window always-on-top via raw `HWND` + `SetWindowPos(HWND_TOPMOST)`
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\win\mod.rs`
-- Create: `C:\Users\oz\Desktop\claude-usage\src\win\topmost.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs`
+- Create: `<repo>\src\win\mod.rs`
+- Create: `<repo>\src\win\topmost.rs`
+- Modify: `<repo>\src\main.rs`
 
 - [ ] **Step 1: Create the `win` module declaration.** Create `src\win\mod.rs`:
   ```rust
@@ -598,8 +598,8 @@ One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
 ### Task M1-1: `model.rs` — core types + `Level::from_pct`
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\model.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (add `mod model;`)
+- Create: `<repo>\src\model.rs`
+- Modify: `<repo>\src\main.rs` (add `mod model;`)
 
 - [ ] **Step 1: Declare the module in `main.rs`.** Add `mod model;` near the top of `src\main.rs`, after any existing `use` lines and before `fn main`.
 
@@ -718,8 +718,8 @@ One responsibility per module (under `C:\Users\oz\Desktop\claude-usage\src\`):
 The quota sources speak different time units: OAuth uses ISO-8601, the status-line uses Unix epoch **seconds**, JSONL timestamps are ISO-8601 Z. We also need UTC-day helpers. This module normalizes all to `std::time::SystemTime` (spine: "convert to `SystemTime` at module boundaries"). Pure and fully unit-tested.
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\timeutil.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (add `mod timeutil;`)
+- Create: `<repo>\src\timeutil.rs`
+- Modify: `<repo>\src\main.rs` (add `mod timeutil;`)
 
 > Exports used by later milestones: `parse_iso8601`, `from_unix_secs`, `from_unix_millis`, `utc_day` (i64 day-count, M1 tests), and **`utc_day_start` (SystemTime at UTC midnight)** — consumed by `TokenLedger` in M3. Both `utc_day` helpers are defined here so M3 never redefines time logic.
 
@@ -904,8 +904,8 @@ The quota sources speak different time units: OAuth uses ISO-8601, the status-li
 The persisted settings, with `#[serde(default)]` so missing/extra fields are forward-compatible (spec §9). `load()` never errors; `save()` returns `anyhow::Result`. Tests cover defaults, partial-JSON merge, corrupt-file tolerance, and a round-trip, using private `load_from`/`save_to` seams so tests never touch the real `%APPDATA%` path.
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\config.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (add `mod config;`)
+- Create: `<repo>\src\config.rs`
+- Modify: `<repo>\src\main.rs` (add `mod config;`)
 
 - [ ] **Step 1: Declare the module.** Add `mod config;` to `src\main.rs`.
 
@@ -1128,9 +1128,9 @@ The persisted settings, with `#[serde(default)]` so missing/extra fields are for
 Before the OAuth client can return anything, the shared `QuotaReading` type must exist. This task adds the type, the `reconcile` signature as `todo!()` (M2 implements the body), and the submodule declarations. A trivial construction smoke test.
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\sources\mod.rs`
-- Create: `C:\Users\oz\Desktop\claude-usage\src\sources\oauth.rs` (placeholder)
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (add `mod sources;`)
+- Create: `<repo>\src\sources\mod.rs`
+- Create: `<repo>\src\sources\oauth.rs` (placeholder)
+- Modify: `<repo>\src\main.rs` (add `mod sources;`)
 
 - [ ] **Step 1: Declare the module.** Add `mod sources;` to `src\main.rs`.
 
@@ -1207,8 +1207,8 @@ Before the OAuth client can return anything, the shared `QuotaReading` type must
 Turn the real OAuth `/api/oauth/usage` response body into a `QuotaReading`. `parse_usage_json` is pure and fully unit-tested against a fixture matching spec §3 / Appendix A: `five_hour`, `seven_day`, nullable `seven_day_opus`, `seven_day_sonnet`, each `{ utilization: 0–100, resets_at: ISO-8601 }`. `resets_at` is ISO-8601 here (NOT Unix seconds — that's the status-line form).
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\oauth.rs` (replace placeholder)
-- Create: `C:\Users\oz\Desktop\claude-usage\tests\fixtures\oauth_usage.json`
+- Modify: `<repo>\src\sources\oauth.rs` (replace placeholder)
+- Create: `<repo>\tests\fixtures\oauth_usage.json`
 
 - [ ] **Step 1: Create the fixture file.** Create `tests\fixtures\oauth_usage.json`:
   ```json
@@ -1428,7 +1428,7 @@ The freshness-based quota chooser from spec §3.1: prefer a fresh status-line re
 > **Note:** M5-3 re-runs and extends these `reconcile` tests with boundary cases; this task delivers the working implementation. The body written here is final — M5-3 only adds tests around it.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\mod.rs`
+- Modify: `<repo>\src\sources\mod.rs`
 
 - [ ] **Step 1: Write the failing test.** Append a `#[cfg(test)] mod m2_reconcile_tests` to `src\sources\mod.rs` covering the four branches: fresh status-line wins; stale status-line falls through to OAuth; both absent degrades last-good to `Stale`; everything absent yields `None`.
   ```rust
@@ -1555,9 +1555,9 @@ Map `Level` to a gpui `Hsla` and provide a legibility-scrim helper. Pure and det
 > **Note:** M2 establishes `level_color`; M6-2 adds `scrim()` / `on_scrim_text()` for the legibility card. To avoid a name clash, M2 names its early scrim helper `scrim_color()`; M6-2 introduces `scrim()` (the card fill) and `on_scrim_text()` separately. Both can coexist, or M6-2 may consolidate — M6-2's note covers this.
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\ui\theme.rs`
-- Create: `C:\Users\oz\Desktop\claude-usage\src\ui\mod.rs` (add `pub mod theme;`)
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (add `mod ui;`)
+- Create: `<repo>\src\ui\theme.rs`
+- Create: `<repo>\src\ui\mod.rs` (add `pub mod theme;`)
+- Modify: `<repo>\src\main.rs` (add `mod ui;`)
 
 - [ ] **Step 1: Declare the `ui` module.** Add `mod ui;` to `src\main.rs`. Create `src\ui\mod.rs` with `pub mod theme;` (more `pub mod` lines added in M2-4 and M4).
 
@@ -1645,8 +1645,8 @@ The orchestrator: read the status-line cache, conditionally poll OAuth (respecti
 > **Note:** this is the M2 baseline. The token half returns `TokenStats::default()` (M3-6 replaces it); the constructor seam here is `new_with_sources` (M5-4 renames it to `with_sources` and drops the `now` parameter on the statusline/oauth closures). Public `new`/`tick` are stable.
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\collector.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (add `mod collector;`)
+- Create: `<repo>\src\collector.rs`
+- Modify: `<repo>\src\main.rs` (add `mod collector;`)
 
 - [ ] **Step 1: Declare the module + write the failing test.** Add `mod collector;` to `src\main.rs`. Create `src\collector.rs` and add this test module (the impl comes in Step 3). It injects fakes so no I/O happens, asserting: (a) fresh status-line is used and OAuth is *not* polled; (b) OAuth is polled and throttled by the floor; (c) both-absent degrades to `Stale`.
   ```rust
@@ -1870,9 +1870,9 @@ The orchestrator: read the status-line cache, conditionally poll OAuth (respecti
 Render a `UsageSnapshot` as the bars layout (spec §7.1): header with provenance dot, a primary 5H `ProgressBar` with %, a reset countdown, a smaller 7D bar, a footer with today's tokens + dominant model. Colored via `theme::level_color`. GUI code — verified by running.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\timeutil.rs` (add `format_countdown`)
-- Create: `C:\Users\oz\Desktop\claude-usage\src\ui\bars.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\mod.rs` (declare `pub mod bars;`)
+- Modify: `<repo>\src\timeutil.rs` (add `format_countdown`)
+- Create: `<repo>\src\ui\bars.rs`
+- Modify: `<repo>\src\ui\mod.rs` (declare `pub mod bars;`)
 
 - [ ] **Step 1: Add a reset-countdown formatter to `timeutil.rs` (TDD).** Write the failing test first — append to `src\timeutil.rs`:
   ```rust
@@ -2029,9 +2029,9 @@ Render a `UsageSnapshot` as the bars layout (spec §7.1): header with provenance
 Make the `Root` view hold the latest `UsageSnapshot`, spawn a background loop that calls `Collector::tick` every `refresh_secs` and pushes new snapshots into the view, and have `main.rs` open the window with this live `Root`. Replace M0's hardcoded `ProgressBar` with `render_bars`.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\mod.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs`
-- Create: `C:\Users\oz\Desktop\claude-usage\src\statusline_cmd.rs` (stub; real body in M5)
+- Modify: `<repo>\src\ui\mod.rs`
+- Modify: `<repo>\src\main.rs`
+- Create: `<repo>\src\statusline_cmd.rs` (stub; real body in M5)
 
 - [ ] **Step 1: Give the `Root` view a snapshot + config + a render that calls `render_bars`.** Edit `src\ui\mod.rs` so the root entity stores the snapshot and config and renders bars (gauge wiring lands in M4):
   ```rust
@@ -2210,7 +2210,7 @@ Make the `Root` view hold the latest `UsageSnapshot`, spawn a background loop th
 ### Task M3-1 — `parse_line`: one JSONL line → `Option<AssistantRecord>`
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\jsonl.rs` (replace the M1-4 placeholder)
+- Modify: `<repo>\src\sources\jsonl.rs` (replace the M1-4 placeholder)
 - (Module already declared `pub mod jsonl;` in `sources/mod.rs` from M1-4.)
 
 - [ ] **Step 1: Write the failing test.** Replace the placeholder `src\sources\jsonl.rs` with ONLY the type, a stub, and the tests (stub returns `unimplemented!()`). Covers: valid assistant line, non-assistant line (`Ok(None)`), missing-`usage` line, malformed JSON (`Err`), and the `project` passthrough.
@@ -2316,7 +2316,7 @@ Make the `Root` view hold the latest `UsageSnapshot`, spawn a background loop th
 ### Task M3-2 — `TokenLedger`: dedup + UTC-day bucket + per-model/project totals
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\jsonl.rs`
+- Modify: `<repo>\src\sources\jsonl.rs`
 
 - [ ] **Step 1: Write the failing tests.** Append a `#[cfg(test)] mod ledger_tests` asserting: streaming duplicates on the same `(message_id, request_id)` collapse to the **final** record (keep last `output_tokens`, not sum); distinct keys sum; `by_model` and `top_projects` sorted desc; `today_total_output` output-weighted.
   ```rust
@@ -2458,7 +2458,7 @@ Make the `Root` view hold the latest `UsageSnapshot`, spawn a background loop th
 ### Task M3-3 — `TokenLedger` live tokens/min + UTC-day roll
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\jsonl.rs`
+- Modify: `<repo>\src\sources\jsonl.rs`
 
 - [ ] **Step 1: Write the failing tests.** Append `#[cfg(test)] mod live_tests`. `live_tok_per_min` is derived from records whose `timestamp` is **< 90 s old** vs `now`; older records do not contribute. Rate = in-window tokens / minutes spanned (oldest in-window record → now, clamped to a 1 s floor). Day-roll: a new-UTC-day record clears yesterday.
   ```rust
@@ -2572,9 +2572,9 @@ Make the `Root` view hold the latest `UsageSnapshot`, spawn a background loop th
 ### Task M3-4 — JSONL fixtures (streaming dups, non-assistant noise, subagents)
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\tests\fixtures\jsonl\projects\alpha\session-1.jsonl`
-- Create: `C:\Users\oz\Desktop\claude-usage\tests\fixtures\jsonl\projects\beta\session-2.jsonl`
-- Create: `C:\Users\oz\Desktop\claude-usage\tests\fixtures\jsonl\projects\alpha-subagents\session-sub.jsonl`
+- Create: `<repo>\tests\fixtures\jsonl\projects\alpha\session-1.jsonl`
+- Create: `<repo>\tests\fixtures\jsonl\projects\beta\session-2.jsonl`
+- Create: `<repo>\tests\fixtures\jsonl\projects\alpha-subagents\session-sub.jsonl`
 
 The directory layout mirrors `~/.claude/projects/*/*.jsonl`; the jsonl's **parent dir name** is the project. `alpha-subagents` exists to prove the `subagents` exclusion.
 
@@ -2612,7 +2612,7 @@ The directory layout mirrors `~/.claude/projects/*/*.jsonl`; the jsonl's **paren
 `Cursor::update(&mut self, projects_root: &Path, ledger: &mut TokenLedger, now: SystemTime) -> anyhow::Result<usize>` — globs `projects_root/*/*.jsonl`, **excludes any path containing `subagents`**, reads only appended bytes since `last_size` (re-reads from 0 if shrank), parses new lines, ingests, returns the count of new records.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\jsonl.rs`
+- Modify: `<repo>\src\sources\jsonl.rs`
 
 - [ ] **Step 1: Write the failing tests.** Append `#[cfg(test)] mod cursor_tests`: (a) first pass over M3-4 fixtures counts deduped records and excludes subagents; (b) second `update` with no changes returns 0; (c) appended bytes read incrementally; (d) a shrunk file re-reads from 0. Tests (c)/(d) copy the fixture tree into a unique temp dir.
   ```rust
@@ -2799,7 +2799,7 @@ The directory layout mirrors `~/.claude/projects/*/*.jsonl`; the jsonl's **paren
 In M2 the collector's `read_tokens` closure returned `TokenStats::default()`. This task replaces that closure in `Collector::new` with one owning a real `Cursor` + `TokenLedger` (captured via `RefCell`), driving `cursor.update(projects_root, ledger, now)` then `ledger.stats(now)`. The quota/reconcile half (M2) is unchanged. The collector stays closure-based (consistent with M2 and M5-4) — **no `tick_at_root`/struct-field rewrite**.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\collector.rs`
+- Modify: `<repo>\src\collector.rs`
 
 - [ ] **Step 1: Write the failing test.** Append to `src\collector.rs`'s `mod tests`. It injects a `read_tokens` closure pointing at the M3-4 fixtures (via a new helper `tokens_closure_for(root)`) and asserts the snapshot carries real stats.
   ```rust
@@ -2917,9 +2917,9 @@ In M2 the collector's `read_tokens` closure returned `TokenStats::default()`. Th
 ### Task M4-1: Gauge view (ProgressCircle rings)
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\ui\gauge.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\mod.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\theme.rs`
+- Create: `<repo>\src\ui\gauge.rs`
+- Modify: `<repo>\src\ui\mod.rs`
+- Modify: `<repo>\src\ui\theme.rs`
 
 - [ ] **Step 1: Add a duration formatter to `ui/theme.rs` (TDD).** The gauge prints countdowns ("2h13m", "4d5h"). Pure and cheap. Append to `src\ui\theme.rs`:
   ```rust
@@ -3068,9 +3068,9 @@ In M2 the collector's `read_tokens` closure returned `TokenStats::default()`. Th
 ### Task M4-2: Right-click context menu (toggle view, backdrop, refresh, scale, quit)
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\mod.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\config.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (poller honors `request_refresh`)
+- Modify: `<repo>\src\ui\mod.rs`
+- Modify: `<repo>\src\config.rs`
+- Modify: `<repo>\src\main.rs` (poller honors `request_refresh`)
 
 - [ ] **Step 1: Add config mutators to `config.rs` (with clamp tests).** Append:
   ```rust
@@ -3241,8 +3241,8 @@ In M2 the collector's `read_tokens` closure returned `TokenStats::default()`. Th
 ### Task M4-3: Left-drag-to-move + persist window position
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\mod.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs`
+- Modify: `<repo>\src\ui\mod.rs`
+- Modify: `<repo>\src\main.rs`
 
 - [ ] **Step 1: Add a left-button drag handler to the root element.** gpui drives the OS move loop via `window.start_window_move()` on left-mouse-down (custom caption: the whole body is draggable). Confirm the method name (`start_window_move` vs `start_system_move`) against the M0 pin. Add the left-button handler BEFORE the right-button one in the `Render` body:
   ```rust
@@ -3298,7 +3298,7 @@ In M2 the collector's `read_tokens` closure returned `TokenStats::default()`. Th
 - [ ] **Step 4: Run + observe drag + persistence.** `cargo run`:
   1. **Left-press and drag** anywhere on the body → the window follows the cursor; release drops it.
   2. Note the location, **Quit** (right-click → Quit).
-  3. Open `C:\Users\oz\AppData\Roaming\claude-usage\widget-config.json` and confirm `"position"` holds the dragged coordinates.
+  3. Open `%APPDATA%\claude-usage\widget-config.json` and confirm `"position"` holds the dragged coordinates.
   4. `cargo run` **again** → the widget reopens at the **same** location.
 
 - [ ] **Step 5: Commit.**
@@ -3312,7 +3312,7 @@ In M2 the collector's `read_tokens` closure returned `TokenStats::default()`. Th
 ### Task M4-4: End-to-end chrome verification + config round-trip
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\config.rs` (test only; impl only if a bug surfaces)
+- Modify: `<repo>\src\config.rs` (test only; impl only if a bug surfaces)
 
 - [ ] **Step 1: Add a serialize→deserialize round-trip test.** Append to `src\config.rs`:
   ```rust
@@ -3386,7 +3386,7 @@ In M2 the collector's `read_tokens` closure returned `TokenStats::default()`. Th
 The status-line stdin JSON: `rate_limits.{five_hour,seven_day}.{used_percentage, resets_at}`, where `resets_at` is **Unix epoch SECONDS** (≠ the OAuth ISO-8601 form). We normalize on write and persist `written_at` so `read_cache` populates `QuotaReading.observed_at` for freshness.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\statusline.rs` (replace the M2-3 minimal stub)
+- Modify: `<repo>\src\sources\statusline.rs` (replace the M2-3 minimal stub)
 
 - [ ] **Step 1: Write the failing test.** Append to `src\sources\statusline.rs`:
   ```rust
@@ -3547,8 +3547,8 @@ The status-line stdin JSON: `rate_limits.{five_hour,seven_day}.{used_percentage,
 `run_statusline(stdin: &str, cache_path: &Path) -> anyhow::Result<String>` writes the cache and returns the one-line status. `main.rs`'s `--statusline` branch reads stdin, calls it, and `println!`s the result.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\statusline_cmd.rs` (replace the M2-5 stub)
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (real `--statusline` dispatch)
+- Modify: `<repo>\src\statusline_cmd.rs` (replace the M2-5 stub)
+- Modify: `<repo>\src\main.rs` (real `--statusline` dispatch)
 
 - [ ] **Step 1: Write the failing test.** Append to `src\statusline_cmd.rs`:
   ```rust
@@ -3665,7 +3665,7 @@ The status-line stdin JSON: `rate_limits.{five_hour,seven_day}.{used_percentage,
 `reconcile`'s body is final from M2-1. This task adds boundary coverage (exact-max-age freshness, no-statusline path) to lock the §3.1 preference.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\sources\mod.rs` (tests only)
+- Modify: `<repo>\src\sources\mod.rs` (tests only)
 
 - [ ] **Step 1: Write the tests.** Append `#[cfg(test)] mod m5_reconcile_tests` to `src\sources\mod.rs`:
   ```rust
@@ -3724,7 +3724,7 @@ The status-line stdin JSON: `rate_limits.{five_hour,seven_day}.{used_percentage,
 The §3.1 net effect (zero network while coding) is already implemented in M2-3's `tick`. This task adds explicit boundary tests and confirms the production OAuth-creds reader passes the **bare** version string to `oauth::fetch` (which prepends `claude-code/`).
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\collector.rs`
+- Modify: `<repo>\src\collector.rs`
 
 - [ ] **Step 1: Write the failing/guard tests.** Append `#[cfg(test)] mod m5_oauth_skip_tests` to `src\collector.rs`. Uses the M2 seam `new_with_sources` (closures take `now`); asserts zero OAuth calls when statusline fresh, one call when stale + floor elapsed, and suppression within the floor.
   ```rust
@@ -3838,8 +3838,8 @@ Proves the §3.1 net effect end-to-end: with the helper feeding the cache, the G
 The user's `~/.claude/settings.json` has **no** `statusLine` key, so registration is a clean insert that must preserve all other keys. The pure merge is unit-tested; the side-effecting wrapper is manual-verified.
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\statusline_register.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (declare `mod statusline_register;` + `--register-statusline` branch)
+- Create: `<repo>\src\statusline_register.rs`
+- Modify: `<repo>\src\main.rs` (declare `mod statusline_register;` + `--register-statusline` branch)
 
 - [ ] **Step 1: Write the file with the pure merge + tests.** Create `src\statusline_register.rs`:
   ```rust
@@ -3980,9 +3980,9 @@ The user's `~/.claude/settings.json` has **no** `statusLine` key, so registratio
 `win/backdrop.rs` maps the configured `Backdrop` + the detected Windows build to a concrete `WindowBackgroundAppearance`, never panicking. Mica is Win11-only (build ≥ 22000; MicaAlt ≥ 22621); older builds fall back to acrylic blur, then transparent, then opaque.
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\src\win\backdrop.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\win\mod.rs` (add `pub mod backdrop;`)
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\main.rs` (consume the chosen appearance in `WindowOptions`)
+- Create: `<repo>\src\win\backdrop.rs`
+- Modify: `<repo>\src\win\mod.rs` (add `pub mod backdrop;`)
+- Modify: `<repo>\src\main.rs` (consume the chosen appearance in `WindowOptions`)
 
 > **Variant-name reconciliation (critical):** M0 used `WindowBackgroundAppearance::MicaBackdrop` in `WindowOptions`. The four right-hand sides below (`Mica`/`Blurred`/`Transparent`/`Opaque`) must match the **exact** variant spellings of the gpui rev pinned in M0. If gpui uses the `*Backdrop` suffix (e.g. `MicaBackdrop`, `BlurredBackdrop`), rename the four mapped values here and nowhere else — the mapping logic is unaffected. Whatever spelling M0's `MicaBackdrop` literal used is authoritative.
 
@@ -4114,9 +4114,9 @@ Translucent Mica washes out small text (spec §7.3). Mitigate with a faint round
 > **Reconciliation:** M2 already added `scrim_color()` (a translucent fill used by `bars.rs`). M6-2 adds `scrim()` (the card fill, ~45% black) and `on_scrim_text()` (high-contrast fg). To avoid duplication, treat `scrim()` as the canonical card fill and have `bars.rs` switch from `scrim_color()` to `scrim()` here; keep `scrim_color()` only if still referenced elsewhere (otherwise delete it to avoid a dead-code warning). The gauge gets the same card.
 
 **Files:**
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\theme.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\bars.rs`
-- Modify: `C:\Users\oz\Desktop\claude-usage\src\ui\gauge.rs`
+- Modify: `<repo>\src\ui\theme.rs`
+- Modify: `<repo>\src\ui\bars.rs`
+- Modify: `<repo>\src\ui\gauge.rs`
 
 - [ ] **Step 1: Add `scrim()` + `on_scrim_text()` to `ui/theme.rs`.** Append (reuse the existing `use gpui::{hsla, Hsla};` — do not duplicate):
   ```rust
@@ -4170,7 +4170,7 @@ Translucent Mica washes out small text (spec §7.3). Mitigate with a faint round
 Pure manual validation, recorded so the milestone has an explicit DPI gate. If text clips/blurs, the fix is a base-font bump in `ui/theme.rs`.
 
 **Files:**
-- Modify (only if a DPI defect is found): `C:\Users\oz\Desktop\claude-usage\src\ui\theme.rs` (+ `bars.rs`/`gauge.rs`)
+- Modify (only if a DPI defect is found): `<repo>\src\ui\theme.rs` (+ `bars.rs`/`gauge.rs`)
 
 - [ ] **Step 1: Build the release binary.** `cargo build --release` → `target\release\claude-usage-widget.exe`.
 
@@ -4206,12 +4206,12 @@ Pure manual validation, recorded so the milestone has an explicit DPI gate. If t
 Confirm the icon is wired through the Windows resource (M0 added `build.rs` + `app.rc` + `assets/icon.ico`), verify the release profile produces one lean binary, and prove the icon shows in Explorer.
 
 **Files:**
-- Verify: `C:\Users\oz\Desktop\claude-usage\build.rs`, `C:\Users\oz\Desktop\claude-usage\app.rc`, `C:\Users\oz\Desktop\claude-usage\assets\icon.ico`
-- Create: `C:\Users\oz\Desktop\claude-usage\tests\fixtures\statusline_stdin.json` (for Step 6)
+- Verify: `<repo>\build.rs`, `<repo>\app.rc`, `<repo>\assets\icon.ico`
+- Create: `<repo>\tests\fixtures\statusline_stdin.json` (for Step 6)
 
 - [ ] **Step 1: Confirm the resource script + build.rs (from M0-3) are intact.** `app.rc` contains `1 ICON "assets/icon.ico"`; `build.rs` calls `embed_resource::compile("app.rc", embed_resource::NONE)` under `#[cfg(target_os = "windows")]`. (These were standardized in M0-3 to `app.rc` + `assets/icon.ico` — no rename needed here.)
 
-- [ ] **Step 2: Confirm a real `.ico` is present.** `Test-Path C:\Users\oz\Desktop\claude-usage\assets\icon.ico` → `True`. If `False`, add a multi-resolution `.ico` (16/32/48/256 px) at that path.
+- [ ] **Step 2: Confirm a real `.ico` is present.** `Test-Path <repo>\assets\icon.ico` → `True`. If `False`, add a multi-resolution `.ico` (16/32/48/256 px) at that path.
 
 - [ ] **Step 3: Build the release single-exe.** `cargo build --release`. Expected: clean build (the `[profile.release] lto = true, strip = true` from the dependency block is already in `Cargo.toml`). Output: `target\release\claude-usage-widget.exe`.
 
@@ -4243,9 +4243,9 @@ Confirm the icon is wired through the Windows resource (M0 added `build.rs` + `a
 ### Task M6-5: README — build prerequisites and setup
 
 **Files:**
-- Create: `C:\Users\oz\Desktop\claude-usage\README.md`
+- Create: `<repo>\README.md`
 
-- [ ] **Step 1: Write the README.** Create `C:\Users\oz\Desktop\claude-usage\README.md`:
+- [ ] **Step 1: Write the README.** Create `<repo>\README.md`:
   ```markdown
   # claude-usage-widget
 
@@ -4343,7 +4343,7 @@ Confirm the icon is wired through the Windows resource (M0 added `build.rs` + `a
   ```
   > Update the `statusLine.command` path if the repo is cloned elsewhere; the path above matches the current working tree.
 
-- [ ] **Step 2: Run + observe — README renders.** `Get-Content C:\Users\oz\Desktop\claude-usage\README.md -TotalCount 20`. Observe: the file exists and the first lines show the title and intro. Optionally preview the Markdown to confirm the table and JSON block render cleanly.
+- [ ] **Step 2: Run + observe — README renders.** `Get-Content <repo>\README.md -TotalCount 20`. Observe: the file exists and the first lines show the title and intro. Optionally preview the Markdown to confirm the table and JSON block render cleanly.
 
 - [ ] **Step 3: Commit.**
   ```

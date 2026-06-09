@@ -17,5 +17,8 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Local agent/editor state
+.claude/
+
 # Note: Cargo.lock IS committed on purpose — the gpui git deps must stay pinned
 # (build the widget with `--locked`).
