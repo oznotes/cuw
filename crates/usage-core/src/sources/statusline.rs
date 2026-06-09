@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! The local status-line quota cache.
 //!
 //! Claude Code pipes a JSON blob (including `rate_limits`) to its configured
@@ -45,7 +48,7 @@ pub fn read_cache(path: &Path) -> Option<QuotaReading> {
     let s = std::fs::read_to_string(path).ok()?;
     let c: Cache = serde_json::from_str(&s).ok()?;
     let mk = |w: &CacheWindow| Window {
-        used_pct: w.used_percentage as f32,
+        used_pct: (w.used_percentage as f32).clamp(0.0, 100.0),
         resets_at: w.resets_at.map(unix_secs_to_systemtime),
     };
     Some(QuotaReading {
@@ -99,7 +102,8 @@ pub fn write_cache_from_stdin_at(stdin_json: &str, path: &Path, now: SystemTime)
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).ok();
     }
-    let tmp = path.with_extension("json.tmp");
+    // Per-process temp name so two writers don't race on the same temp file.
+    let tmp = path.with_extension(format!("json.tmp.{}", std::process::id()));
     std::fs::write(&tmp, json.as_bytes()).with_context(|| format!("writing {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("renaming into {}", path.display()))?;
     Ok(())

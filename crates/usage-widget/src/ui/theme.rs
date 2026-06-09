@@ -1,7 +1,8 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Level → color. The one piece of UI logic worth isolating: it maps a
 //! window's severity to the green/amber/red the gauge uses.
-//!
-//! M2: confirm `gpui::hsla`/`Hsla` are the right constructors for the pinned rev.
 
 use gpui::{Hsla, hsla};
 use usage_core::model::Level;
@@ -15,10 +16,11 @@ pub fn level_color(level: Level) -> Hsla {
     }
 }
 
-/// A faint dark scrim drawn behind text so the numbers stay readable over a
-/// translucent Mica background (design spec §7.3).
-pub fn scrim() -> Hsla {
-    hsla(225.0 / 360.0, 0.19, 0.13, 0.80)
+/// The dark scrim drawn over the transparent window at the user's chosen
+/// opacity. `0.0` = fully see-through (the desktop shows through), `1.0` = a
+/// solid dark card. (Config default is `0.4` — a readable scrim over the glass.)
+pub fn panel_bg(opacity: f32) -> Hsla {
+    hsla(225.0 / 360.0, 0.19, 0.13, opacity.clamp(0.0, 1.0))
 }
 
 /// Compact activity-cell palette for the details strip.

@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Local token detail from `~/.claude/projects/*/*.jsonl`.
 //!
 //! Three pieces:
@@ -25,6 +28,17 @@ fn day_label(day_index: i64) -> String {
             format!("{} {}", d.format("%b"), d.day())
         })
         .unwrap_or_default()
+}
+
+/// Quantize a day's token count to an intensity level 0..=4 (GitHub-style).
+fn level_for(tokens: u64) -> u8 {
+    match tokens {
+        0 => 0,
+        1..=49_999 => 1,
+        50_000..=149_999 => 2,
+        150_000..=349_999 => 3,
+        _ => 4,
+    }
 }
 
 /// Output tokens within this window of `now` feed the "live tok/min" figure.
@@ -94,6 +108,15 @@ pub fn parse_line(line: &str, project: &str) -> Result<Option<AssistantRecord>> 
 
 /// Accumulates deduped assistant records into today's (UTC) totals + a live rate.
 pub struct TokenLedger {
+    // KNOWN LIMITATIONS (tracked for a future pass — do not "fix" naively, the
+    // dedup here is load-bearing and well-tested):
+    // 1. `seen` is never pruned. The first cursor update reads the entire history,
+    //    so `seen` holds every (message_id, request_id) ever — ~tens of bytes each.
+    //    Bounding it safely is non-trivial: it's what keeps id'd records from being
+    //    re-counted into the all-time `by_day` if a current file rotates.
+    // 2. Records with BOTH ids empty bypass `seen`, so on a file rotation (re-read
+    //    from offset 0) they are re-added to `by_day` (double-counted in the
+    //    all-time heatmap). Rare in practice (real records carry ids).
     /// (message_id, request_id) -> highest `output_tokens` already counted, so a
     /// streamed request's rising rows are counted by increment (final row wins).
     seen: HashMap<(String, String), u64>,
@@ -212,7 +235,11 @@ impl TokenLedger {
         };
         top_projects.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
-        let today_total_output = by_model.iter().map(|(_, v)| *v).sum();
+        let today_total_output = if today_valid {
+            self.by_day.get(&self.day).copied().unwrap_or(0)
+        } else {
+            0
+        };
 
         let live_sum: u64 = self
             .recent
@@ -270,7 +297,7 @@ impl TokenLedger {
                 }
                 let tokens = self.by_day.get(&idx).copied().unwrap_or(0);
                 HeatCell {
-                    level: crate::stats_cache::level_for(tokens),
+                    level: level_for(tokens),
                     tokens,
                     label: day_label(idx),
                 }
@@ -376,7 +403,7 @@ impl Cursor {
     }
 }
 
-/// Two-level walk: `root/<slug>/*.jsonl`, excluding any path containing `subagents`.
+/// Two-level walk: `root/<slug>/*.jsonl`, excluding the `subagents` directory.
 fn jsonl_files(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let Ok(slugs) = std::fs::read_dir(root) else {
@@ -392,9 +419,10 @@ fn jsonl_files(root: &Path) -> Vec<PathBuf> {
         };
         for f in files.flatten() {
             let fp = f.path();
-            if fp.extension().and_then(|e| e.to_str()) == Some("jsonl")
-                && !fp.to_string_lossy().contains("subagents")
-            {
+            // Exclude `subagents` by path COMPONENT, not substring, so a project
+            // legitimately named e.g. `my-subagents-demo` is NOT dropped.
+            let is_subagents = fp.components().any(|c| c.as_os_str() == "subagents");
+            if fp.extension().and_then(|e| e.to_str()) == Some("jsonl") && !is_subagents {
                 out.push(fp);
             }
         }
@@ -549,6 +577,20 @@ mod tests {
         assert!(grid[2][1].label.starts_with("Jun")); // and a date label
     }
 
+    #[test]
+    fn headline_matches_heatmap_today() {
+        let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
+        let ts = iso8601_to_systemtime("2026-06-08T11:00:00Z").unwrap();
+        let mut led = TokenLedger::new();
+        led.ingest(&rec(ts, "m1", "r1", "opus", 100), now);
+        led.ingest(&rec(ts, "m2", "r2", "sonnet", 250), now);
+        let headline = led.stats(now).today_total_output;
+        let grid = led.activity_heatmap(now, 8);
+        let today_cell = grid.last().unwrap().iter().map(|c| c.tokens).max().unwrap();
+        assert_eq!(headline, 350);
+        assert_eq!(headline, today_cell);
+    }
+
     // ---- Cursor ----
 
     fn write_session(root: &Path, slug: &str, file: &str, contents: &str) -> PathBuf {
@@ -595,6 +637,25 @@ mod tests {
         let mut cur = Cursor::new();
         let mut led = TokenLedger::new();
         assert_eq!(cur.update(&root, &mut led, now).unwrap(), 0);
+    }
+
+    #[test]
+    fn cursor_keeps_projects_with_subagents_in_the_name() {
+        // The exclusion is by path COMPONENT, so a project whose slug merely
+        // contains "subagents" (e.g. `my-subagents-demo`) is still counted.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("projects");
+        let now = iso8601_to_systemtime("2026-06-08T12:00:00Z").unwrap();
+        write_session(
+            &root,
+            "my-subagents-demo",
+            "s.jsonl",
+            &format!("{}\n", line("2026-06-08T11:00:00Z", "m", "r", "opus", 100)),
+        );
+        let mut cur = Cursor::new();
+        let mut led = TokenLedger::new();
+        assert_eq!(cur.update(&root, &mut led, now).unwrap(), 1);
+        assert_eq!(led.stats(now).today_total_output, 100);
     }
 
     #[test]

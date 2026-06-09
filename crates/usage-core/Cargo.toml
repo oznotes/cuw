@@ -3,6 +3,8 @@ name = "usage-core"
 version = "0.1.0"
 edition = "2024"
 description = "Pure data + logic core for the Claude usage widget (no GUI). Reads quota + JSONL token usage and produces UsageSnapshots."
+authors = ["Ozgur Oz"]
+license = "MIT"
 
 [dependencies]
 anyhow = "1"

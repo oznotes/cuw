@@ -1,5 +1,21 @@
+# Rust build artifacts (one workspace target/ at the repo root)
 target/
 **/*.rs.bk
 *.pdb
+
+# Scratch screen captures (glass-capture dev tool) and logs
 *.png
 *.log
+# ...but keep the committed README screenshot
+!docs/screenshot.png
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Note: Cargo.lock IS committed on purpose — the gpui git deps must stay pinned
+# (build the widget with `--locked`).

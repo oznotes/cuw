@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Quota sources and their reconciliation.
 //!
 //! Two live sources provide the headline utilization numbers:

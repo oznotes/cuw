@@ -1,10 +1,13 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! `claude-usage-widget` entry point.
 //!
 //! Two modes:
 //! - `--statusline` : status-line helper (no GUI). Lets this single binary be
 //!   registered as Claude Code's `statusLine.command` if you'd rather not build
 //!   the separate `claude-usage-statusline`. Pure `usage-core`, no gpui.
-//! - default        : launch the always-on-top frosted-glass widget.
+//! - default        : launch the always-on-top transparent (see-through) widget.
 
 // Release builds are a GUI app: no console window. Debug keeps the console so
 // panics/logs are visible during development.

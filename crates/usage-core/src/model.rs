@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Canonical data types — the contract between the collector and the UI.
 //!
 //! These are deliberately std-only (no chrono, no gpui) so both the logic
@@ -28,6 +31,12 @@ impl Level {
     /// of each band (e.g. `70.0`, `90.0`), so `pct == warn` is already `Warn`
     /// and `pct == critical` is already `Critical`.
     pub fn from_pct(pct: f32, warn: f32, critical: f32) -> Level {
+        // A non-finite percentage (NaN/inf) makes every `>=` comparison false,
+        // which would silently map to `Ok` (green) and hide a maxed quota.
+        // Treat it as the worst case instead.
+        if !pct.is_finite() {
+            return Level::Critical;
+        }
         if pct >= critical {
             Level::Critical
         } else if pct >= warn {
@@ -131,5 +140,10 @@ mod tests {
         assert_eq!(Level::from_pct(50.0, 50.0, 80.0), Level::Warn);
         assert_eq!(Level::from_pct(79.0, 50.0, 80.0), Level::Warn);
         assert_eq!(Level::from_pct(80.0, 50.0, 80.0), Level::Critical);
+    }
+
+    #[test]
+    fn non_finite_pct_is_critical() {
+        assert_eq!(Level::from_pct(f32::NAN, 70.0, 90.0), Level::Critical);
     }
 }

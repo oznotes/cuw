@@ -4,6 +4,9 @@
 name = "icongen"
 version = "0.0.0"
 edition = "2021"
+description = "Dev tool: rasterize the widget SVG into a multi-size assets/icon.ico (not shipped)."
+authors = ["Ozgur Oz"]
+license = "MIT"
 publish = false
 
 [dependencies]

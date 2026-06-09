@@ -1,9 +1,12 @@
-//! `claude-usage-statusline` — register this as Claude Code's
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
+//! `statusline` — register this as Claude Code's
 //! `statusLine.command` in `~/.claude/settings.json`:
 //!
 //! ```json
 //! { "statusLine": { "type": "command",
-//!     "command": "C:\\path\\to\\claude-usage-statusline.exe" } }
+//!     "command": "C:\\path\\to\\statusline.exe" } }
 //! ```
 //!
 //! Claude Code pipes the session JSON (including `rate_limits`) to stdin after

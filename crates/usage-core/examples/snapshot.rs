@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Print one UsageSnapshot from the real local `~/.claude` data.
 //!
 //! Run (local only, no network):   cargo run -p usage-core --example snapshot

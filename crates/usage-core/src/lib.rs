@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Pure data + logic core for the Claude usage widget.
 //!
 //! No GUI, no platform code. Everything here is unit-testable and produces
@@ -15,6 +18,5 @@ pub mod collector;
 pub mod config;
 pub mod model;
 pub mod sources;
-pub mod stats_cache;
 pub mod statusline_cmd;
 pub mod timeutil;

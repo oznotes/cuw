@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! The OAuth usage endpoint: `GET https://api.anthropic.com/api/oauth/usage`.
 //!
 //! Returns the real 5h / 7d utilization. The parsing is pure and tested; the
@@ -39,7 +42,7 @@ fn to_window(w: &WindowJson) -> Result<Window> {
         None => None,
     };
     Ok(Window {
-        used_pct: w.utilization,
+        used_pct: w.utilization.clamp(0.0, 100.0),
         resets_at,
     })
 }

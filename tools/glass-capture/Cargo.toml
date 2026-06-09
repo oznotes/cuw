@@ -1,0 +1,31 @@
+# Standalone dev tool: capture a screen rect via DXGI Desktop Duplication and
+# save it as a PNG. Unlike GDI BitBlt/CopyFromScreen, this sees DirectComposition
+# + DWM system backdrops (Mica/Acrylic) — i.e. it can actually capture the gpui
+# widget and its glass. No gpui dependency, so it builds in seconds (no CMake).
+#
+#   cargo run --manifest-path tools/glass-capture/Cargo.toml -- <left> <top> <w> <h> <out.png>
+[package]
+name = "glass-capture"
+version = "0.1.0"
+edition = "2021"
+description = "Dev tool: capture a screen rect via DXGI Desktop Duplication to PNG (verifies the widget glass; not shipped)."
+authors = ["Ozgur Oz"]
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "glass-capture"
+path = "src/main.rs"
+
+[dependencies]
+image = "0.25"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+] }

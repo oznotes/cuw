@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Orchestrates the three sources into one [`UsageSnapshot`] per tick.
 //!
 //! Quota policy: prefer a **fresh** status-line cache (free); otherwise poll the

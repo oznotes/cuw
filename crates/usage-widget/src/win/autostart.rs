@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! "Start on login" via the per-user `HKCU\…\Run` registry value. Toggled by
 //! the user from the widget's menu (user-initiated, so it's their choice — not
 //! something the app forces).

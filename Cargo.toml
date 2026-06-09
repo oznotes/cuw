@@ -1,0 +1,23 @@
+# Workspace root. `default-members` is just `usage-core` so a bare `cargo build`
+# / `cargo test` from the root stays CMake-free (it skips the gpui widget); build
+# the GUI explicitly with `-p claude-usage-widget`. The gpui git deps are pinned
+# by the single root `Cargo.lock` — build the widget with `--locked`.
+[workspace]
+resolver = "3"
+members = [
+    "crates/usage-core",
+    "crates/usage-widget",
+    "tools/icongen",
+    "tools/glass-capture",
+]
+default-members = ["crates/usage-core"]
+
+[profile.release]
+opt-level = "z"   # optimize aggressively for size
+# thin (not "fat") LTO: fat LTO + panic="abort" intermittently fails a CLEAN build
+# of proc-macro deps with "only metadata stub found for rlib dependency core".
+# thin is robust and only marginally larger.
+lto = "thin"
+strip = true      # drop symbols
+codegen-units = 1 # better cross-module size optimization
+panic = "abort"   # no unwind tables — smaller binary

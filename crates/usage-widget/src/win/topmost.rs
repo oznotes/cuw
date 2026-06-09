@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Always-on-top. gpui does NOT implement this on Windows, so we read the raw
 //! `HWND` from the gpui window (it impls `raw_window_handle::HasWindowHandle`)
 //! and set `HWND_TOPMOST` via `SetWindowPos`.

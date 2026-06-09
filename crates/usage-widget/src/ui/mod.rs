@@ -1,4 +1,7 @@
-//! gpui shell: a borderless, frosted-glass, always-on-top window that renders
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
+//! gpui shell: a borderless, see-through-glass, always-on-top window that renders
 //! the latest `UsageSnapshot`. Written against the real gpui / gpui-component
 //! API (examples/hello_world + system_monitor + menu_story in the checkout).
 //!
@@ -16,13 +19,12 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::Result;
 use gpui::*;
 use gpui_component::menu::ContextMenuExt;
+use gpui_component::progress::{Progress, ProgressCircle};
 use gpui_component::tooltip::Tooltip;
-use gpui_component::{
-    ActiveTheme as _, Root, Theme, ThemeMode, h_flex, progress::Progress, v_flex,
-};
+use gpui_component::{ActiveTheme as _, Root, Sizable as _, Theme, ThemeMode, h_flex, v_flex};
 
 use usage_core::collector::Collector;
-use usage_core::config::Config;
+use usage_core::config::{Config, ViewMode};
 use usage_core::model::{
     HeatCell, Level, LiveSource, Provenance, UsageSnapshot, Window as UWindow,
 };
@@ -87,13 +89,22 @@ pub fn run(config: Config) -> Result<()> {
         let config = config.clone();
         cx.spawn(async move |cx| {
             let opts = window_options(&config);
-            cx.open_window(opts, |window, cx| {
+            let opened = cx.open_window(opts, |window, cx| {
                 win::topmost::pin(window);
                 Theme::change(ThemeMode::Dark, Some(window), cx);
                 let view = cx.new(|cx| Widget::new(shared.clone(), config.clone(), cx));
-                cx.new(|cx| Root::new(view, window, cx))
-            })
-            .expect("failed to open widget window");
+                // gpui-component's `Root` otherwise paints the whole window with
+                // `cx.theme().background` (root.rs). Override only this root so
+                // menus/tooltips keep normal theme surfaces.
+                cx.new(|cx| Root::new(view, window, cx).bg(gpui::hsla(0.0, 0.0, 0.0, 0.0)))
+            });
+            if let Err(e) = opened {
+                // With panic="abort" + windows_subsystem="windows", a panic here
+                // would make the process vanish silently. Fail loudly to stderr
+                // (harmless in release) and shut the app down cleanly instead.
+                eprintln!("claude-usage-widget: failed to open window: {e}");
+                let _ = cx.update(|cx| cx.quit());
+            }
         })
         .detach();
     });
@@ -112,7 +123,9 @@ fn window_options(config: &Config) -> WindowOptions {
             origin,
             size: widget_size(false),
         })),
-        window_background: win::backdrop::appearance(config.backdrop),
+        // Transparent window so the desktop shows through (real see-through
+        // glass). `opacity` (the panel scrim) controls how much.
+        window_background: gpui::WindowBackgroundAppearance::Transparent,
         is_resizable: false,
         is_minimizable: false,
         kind: WindowKind::Normal,
@@ -128,11 +141,17 @@ struct Widget {
     shared: Shared,
     config: Config,
     last_saved_pos: Option<(f32, f32)>,
+    pending_pos: Option<(f32, f32)>,
+    pos_changed_at: Option<std::time::Instant>,
     show_details: bool,
 }
 
 impl Widget {
     fn new(shared: Shared, config: Config, cx: &mut Context<Self>) -> Self {
+        // Seed the last-saved position from config so the very first paint (which
+        // reports the window's current origin) doesn't trigger a spurious write.
+        let seed_pos = config.position;
+
         // Repaint ~1 Hz so reset countdowns advance and fresh snapshots show.
         cx.spawn(async move |this, cx| {
             loop {
@@ -147,7 +166,9 @@ impl Widget {
         Widget {
             shared,
             config,
-            last_saved_pos: None,
+            last_saved_pos: seed_pos,
+            pending_pos: None,
+            pos_changed_at: None,
             show_details: false,
         }
     }
@@ -164,13 +185,26 @@ impl Widget {
     fn save_position_if_moved(&mut self, window: &Window) {
         let o = window.bounds().origin;
         let pos = (f32::from(o.x), f32::from(o.y));
-        let moved = self.last_saved_pos.map_or(true, |p| {
-            (p.0 - pos.0).abs() > 1.0 || (p.1 - pos.1).abs() > 1.0
-        });
-        if moved {
+        let same =
+            |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() <= 1.0 && (a.1 - b.1).abs() <= 1.0;
+        if self.last_saved_pos.map_or(false, |s| same(s, pos)) {
+            return; // already saved this position
+        }
+        // Debounce: wait until the position has stopped changing for ~800ms,
+        // so a drag doesn't write to disk on every frame.
+        if self.pending_pos.map_or(true, |p| !same(p, pos)) {
+            self.pending_pos = Some(pos);
+            self.pos_changed_at = Some(std::time::Instant::now());
+            return;
+        }
+        if self.pos_changed_at.map_or(false, |t| {
+            t.elapsed() >= std::time::Duration::from_millis(800)
+        }) {
             self.last_saved_pos = Some(pos);
             self.config.position = Some(pos);
             let _ = self.config.save();
+            self.pending_pos = None;
+            self.pos_changed_at = None;
         }
     }
 
@@ -223,6 +257,107 @@ impl Widget {
                 cx.listener(|this, _: &MouseDownEvent, window, cx| this.flip_details(window, cx)),
             )
     }
+
+    fn cycle_view(&mut self, cx: &mut Context<Self>) {
+        self.config.view_mode = match self.config.view_mode {
+            ViewMode::Bars => ViewMode::Gauge,
+            ViewMode::Gauge => ViewMode::Bars,
+        };
+        let _ = self.config.save();
+        cx.notify();
+    }
+
+    fn cycle_opacity(&mut self, cx: &mut Context<Self>) {
+        // 0.0 = fully see-through, up to 0.85 = mostly solid card.
+        const STEPS: [f32; 5] = [0.0, 0.15, 0.3, 0.55, 0.85];
+        let i = STEPS
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                (*a - self.config.opacity)
+                    .abs()
+                    .partial_cmp(&(*b - self.config.opacity).abs())
+                    .unwrap()
+            })
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        self.config.opacity = STEPS[(i + 1) % STEPS.len()];
+        let _ = self.config.save();
+        cx.notify();
+    }
+
+    /// The gauge (rings) variant of the 5H/7D display.
+    fn gauge_view(&self, snap: &UsageSnapshot, now: SystemTime, muted: Hsla) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .justify_around()
+            .items_start()
+            .py_1()
+            .child(self.ring("5H", &snap.five_hour, now, muted))
+            .child(self.ring("7D", &snap.seven_day, now, muted))
+    }
+
+    fn ring(&self, label: &str, w: &UWindow, now: SystemTime, muted: Hsla) -> impl IntoElement {
+        let color = theme::level_color(self.level(w.used_pct));
+        let id: SharedString = format!("ring-{label}").into();
+        v_flex()
+            .items_center()
+            .gap_1()
+            .child(
+                ProgressCircle::new(id)
+                    .value(w.used_pct.clamp(0., 100.))
+                    .color(color)
+                    .with_size(gpui_component::Size::Size(px(64.))),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(color)
+                    .child(format!("{label} {:.0}%", w.used_pct)),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(fmt_reset(w.resets_at, now)),
+            )
+    }
+
+    /// A small row of clickable settings in Details: view / opacity.
+    fn settings_row(&self, muted: Hsla, cx: &mut Context<Self>) -> impl IntoElement {
+        let view_v = match self.config.view_mode {
+            ViewMode::Bars => "bars",
+            ViewMode::Gauge => "rings",
+        };
+        let opacity_v = format!("{:.0}%", self.config.opacity * 100.);
+        h_flex()
+            .gap_3()
+            .pt_1()
+            .text_xs()
+            .text_color(muted)
+            .child(
+                div()
+                    .id("set-view")
+                    .child(format!("view {view_v}"))
+                    .tooltip(|window, cx| {
+                        Tooltip::new("click to toggle bars/rings").build(window, cx)
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _w, cx| this.cycle_view(cx)),
+                    ),
+            )
+            .child(
+                div()
+                    .id("set-opacity")
+                    .child(format!("opacity {opacity_v}"))
+                    .tooltip(|window, cx| Tooltip::new("click to cycle opacity").build(window, cx))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _w, cx| this.cycle_opacity(cx)),
+                    ),
+            )
+    }
 }
 
 impl Render for Widget {
@@ -234,14 +369,16 @@ impl Render for Widget {
         let muted = cx.theme().muted_foreground;
         let fg = cx.theme().foreground;
 
-        // Dark, semi-transparent panel: legible over the Mica frosted backdrop.
+        // The widget window is transparent (see-through to the desktop); this
+        // dark scrim is the only fill. `opacity` blends 0.0 (fully see-through)
+        // to 1.0 (solid dark card). Text/bars stay opaque on top.
         let root = v_flex()
             .id("widget-root")
             .size_full()
             .gap_2()
             .p_3()
             .rounded_xl()
-            .bg(theme::scrim())
+            .bg(theme::panel_bg(self.config.opacity))
             .text_color(fg);
 
         let root = match snap {
@@ -258,13 +395,17 @@ impl Render for Widget {
                     .child(div().text_xs().text_color(muted).child(prov))
                     .window_control_area(WindowControlArea::Drag);
 
-                let mut root = root
-                    .child(header)
-                    .child(self.window_row("5H", &snap.five_hour, now))
-                    .child(self.window_row("7D", &snap.seven_day, now))
-                    .child(div().text_xs().text_color(muted).child(footer));
+                let mut root = root.child(header);
+                root = match self.config.view_mode {
+                    ViewMode::Bars => root
+                        .child(self.window_row("5H", &snap.five_hour, now))
+                        .child(self.window_row("7D", &snap.seven_day, now)),
+                    ViewMode::Gauge => root.child(self.gauge_view(&snap, now, muted)),
+                };
+                root = root.child(div().text_xs().text_color(muted).child(footer));
                 if self.show_details {
                     root = root.child(details_panel(&snap, now, muted));
+                    root = root.child(self.settings_row(muted, cx));
                     if let Some(diagnostics) = diagnostics {
                         root = root.child(div().text_xs().text_color(muted).child(diagnostics));
                     }

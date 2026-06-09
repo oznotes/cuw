@@ -1,8 +1,15 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Rasterize `assets/icon.svg` → `assets/icon.ico` at 16/32/48/64/256 px.
 
 use resvg::{tiny_skia, usvg};
 
-const BASE: &str = "C:/Users/oz/Desktop/claude-usage/crates/usage-widget/assets";
+// Resolved relative to this crate so it works from any clone location.
+const BASE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../crates/usage-widget/assets"
+);
 
 fn main() {
     let svg = std::fs::read_to_string(format!("{BASE}/icon.svg")).expect("read icon.svg");

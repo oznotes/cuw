@@ -1,6 +1,9 @@
-//! Embed the Windows `.exe` icon, if present. Skipped gracefully when the icon
-//! is absent so the build never fails on a missing asset (add `assets/icon.ico`
-//! + `assets/app.rc` in milestone M6 to give the binary an icon).
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
+//! Embed the Windows `.exe` icon (`assets/icon.ico` via `assets/app.rc`, using
+//! the embed-resource crate). Skipped gracefully when either asset is absent so
+//! the build never fails on a missing icon.
 
 fn main() {
     #[cfg(target_os = "windows")]

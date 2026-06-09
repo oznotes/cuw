@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! Timestamp normalization. The three Claude data sources use three different
 //! time encodings, and conflating them is a documented foot-gun:
 //!

@@ -14,6 +14,9 @@
 name = "claude-usage-widget"
 version = "0.1.0"
 edition = "2024"
+description = "Always-on-top, see-through-glass Windows desktop widget showing real Claude 5h/7d usage."
+authors = ["Ozgur Oz"]
+license = "MIT"
 
 [[bin]]
 name = "claude-usage-widget"
@@ -33,15 +36,9 @@ winreg = "0.55"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
-    "Win32_System_SystemInformation",
-    "Wdk_System_SystemServices",
 ] }
+
+# Release profile is defined once at the workspace root (../../Cargo.toml).
 
 [build-dependencies]
 embed-resource = "2"
-
-[profile.release]
-opt-level = "s"   # optimize for size
-lto = true        # whole-program; smaller (slower build)
-strip = true      # drop symbols
-codegen-units = 1 # better cross-module size optimization

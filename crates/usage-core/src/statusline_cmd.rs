@@ -1,3 +1,6 @@
+// claude-usage - a Claude usage widget for Windows.
+// Copyright (c) 2026 Ozgur Oz. MIT License (see LICENSE).
+//
 //! The `--statusline` helper. When registered as Claude Code's
 //! `statusLine.command`, this receives the session JSON on stdin after each
 //! assistant message. We extract `rate_limits` into the cache (so the widget
